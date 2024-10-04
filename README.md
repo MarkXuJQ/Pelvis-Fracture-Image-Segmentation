@@ -194,28 +194,28 @@ U-Net 的尺度和切片感知模型，通过提取大规模类别的空间信�
 
 目前参考国内外针对骨折盆骨CT图像处理有以下几篇相关论文：
 
-1.廖晓蓝. 基于骨折盆骨CT图像的双向约束半监督分割算法研究[D]. 广西:广西大学,2023.
+> 1.廖晓蓝. 基于骨折盆骨CT图像的双向约束半监督分割算法研究[D]. 广西:广西大学,2023.
+>
+> 2.王枫. 基于改进卷积神经网络的医学图像分割方法研究[D]. 四川:四川大学,2021
+>
+> 3.王飞翔, 姬锐, 张鹿鸣, 王鹏, 刘太昂, 宋鲁杰, 汪茂文, 周智露, 郝虹霞, 夏文涛. 基于数据挖掘算法的盆骨损伤判别模型. 法医学杂志[J], 2022, 38(3): 350-354 DOI:[10.12116/j.issn.1004-5619.2020.201009](https://doi.org/10.12116/j.issn.1004-5619.2020.201009)
+>
+> 4.Ukai K, Rahman R, Yagi N, Hayashi K,
+> Maruo A, Muratsu H, Kobashi S. Detecting pelvic fracture on 3D-CT using deep
+> convolutional neural networks with multi-orientated slab images. Sci Rep. 2021
+> Jun 3;11(1):11716. doi: 10.1038/s41598-021-91144-z. PMID: 34083655; PMCID:
+> PMC8175387.
+>
+> 5.Liu, Y. et al. (2023). Pelvic Fracture Segmentation Using a Multi-scale Distance-Weighted Neural Network.
+> In: Greenspan, H., et al. Medical Image Computing and Computer Assisted
+> Intervention – MICCAI 2023. MICCAI 2023. Lecture Notes in Computer Science, vol
+> 14228. Springer, Cham.
+>
+> 6.Cheng, Chi-Tung, Yirui Wang, Huan-Wu Chen, Po-Meng Hsiao, Chun-Nan Yeh,
+> Chi-Hsun Hsieh, Shun Miao, Jing Xiao, Chien-Hung Liao, and Le Lu. "A
+> scalable physician-level deep learning algorithm detects universal trauma on
+> pelvic radiographs." Nature communications 12, no. 1 (2021): 1066.
 
-   2.王枫. 基于改进卷积神经网络的医学图像分割方法研究[D]. 四川:四川大学,2021.
-
-   3.王飞翔, 姬锐, 张鹿鸣, 王鹏, 刘太昂, 宋鲁杰, 汪茂文, 周智露, 郝虹霞, 夏文涛. 基于数据挖掘算法的盆骨损伤判别模型. 法医学杂志[J], 2022, 38(3): 350-354 DOI:[10.12116/j.issn.1004-5619.2020.201009](https://doi.org/10.12116/j.issn.1004-5619.2020.201009)
-
-4. Ukai K, Rahman R, Yagi N, Hayashi K,
-   Maruo A, Muratsu H, Kobashi S. Detecting pelvic fracture on 3D-CT using deep
-   convolutional neural networks with multi-orientated slab images. Sci Rep. 2021
-   Jun 3;11(1):11716. doi: 10.1038/s41598-021-91144-z. PMID: 34083655; PMCID:
-   PMC8175387.
-5. 
-
-Liu, Y. et al. (2023). Pelvic Fracture Segmentation Using a Multi-scale Distance-Weighted Neural Network.
-In: Greenspan, H., et al. Medical Image Computing and Computer Assisted
-Intervention – MICCAI 2023. MICCAI 2023. Lecture Notes in Computer Science, vol
-14228. Springer, Cham.
-
-Cheng, Chi-Tung, Yirui Wang, Huan-Wu Chen, Po-Meng Hsiao, Chun-Nan Yeh,
-Chi-Hsun Hsieh, Shun Miao, Jing Xiao, Chien-Hung Liao, and Le Lu. "A
-scalable physician-level deep learning algorithm detects universal trauma on
-pelvic radiographs." Nature communications 12, no. 1 (2021): 1066.
 
 2．已具备的条件，尚缺少的条件及解决方法
 
