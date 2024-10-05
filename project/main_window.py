@@ -165,3 +165,9 @@ class MainWindow(QMainWindow):
         if dialog.exec_():
             settings = dialog.get_settings()
             self.render_on_open = settings['render_on_open']
+            
+    def closeEvent(self, event):
+        # Perform any necessary cleanup
+        if self.viewer is not None:
+            self.viewer.close()  # Call the viewer's close method
+        event.accept()

@@ -294,3 +294,25 @@ class CTViewer(QWidget):
         # For simplicity, I'll provide a placeholder implementation
         # Replace this with the actual model generation code
         return vtk.vtkPolyData()
+    
+    def close(self):
+        # Clean up VTK widgets
+        if hasattr(self, 'vtkWidget_axial'):
+            self.vtkWidget_axial.Finalize()
+            del self.vtkWidget_axial
+
+        if hasattr(self, 'vtkWidget_coronal'):
+            self.vtkWidget_coronal.Finalize()
+            del self.vtkWidget_coronal
+
+        if hasattr(self, 'vtkWidget_sagittal'):
+            self.vtkWidget_sagittal.Finalize()
+            del self.vtkWidget_sagittal
+
+        if hasattr(self, 'model_vtkWidget'):
+            self.model_vtkWidget.Finalize()
+            del self.model_vtkWidget
+
+        # Call the base class close method
+        super().close()
+    # Call the base class close method if necessary

@@ -20,3 +20,10 @@ class XRayViewer(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(self.canvas)
         self.setLayout(layout)
+    
+    def close(self):
+        # Clean up VTK widget
+        self.vtkWidget.Finalize()
+        del self.vtkWidget
+
+        self.close()  # Call the base class close method if necessary
