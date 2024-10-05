@@ -5,6 +5,7 @@ from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
 import SimpleITK as sitk
 import os
+from settings_dialog import SettingsDialog
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -12,6 +13,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Medical Image Viewer")
         self.setGeometry(100, 100, 800, 600)
         self.viewer = None  # Will hold the current image viewer
+        self.render_on_open = False
         self.initUI()
 
     def initUI(self):
@@ -25,6 +27,10 @@ class MainWindow(QMainWindow):
 
         exit_action = QAction('Exit', self)
         exit_action.triggered.connect(self.close)
+        
+        # Create settings action
+        settings_action = QAction('Settings', self)
+        settings_action.triggered.connect(self.open_settings)
 
         # Create menu bar
         menubar = self.menuBar()
@@ -32,6 +38,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(open_action)
         file_menu.addAction(save_as_action)
         file_menu.addAction(exit_action)
+        file_menu.addAction(settings_action)
 
         # Save the action for later use
         self.save_as_action = save_as_action
@@ -132,4 +139,9 @@ class MainWindow(QMainWindow):
                 sitk.WriteImage(slice_i, slice_filename)
         else:
             # For 2D images
-            sitk.WriteImage(image, save_path)
+            sitk.WriteImage(image, save_path) 
+    def open_settings(self):
+        dialog = SettingsDialog(self, render_on_open=self.render_on_open)
+        if dialog.exec_():
+            settings = dialog.get_settings()
+            self.render_on_open = settings['render_on_open']
