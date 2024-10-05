@@ -270,22 +270,50 @@ class CTViewer(QWidget):
         actor.SetMapper(mapper)
         # Add actor to the renderer
         self.model_renderer.AddActor(actor)
+        self.model_renderer.SetBackground(0.68, 0.85, 0.9)  # Light blue background
         self.model_renderer.ResetCamera()
         self.model_vtkWidget.GetRenderWindow().Render()
 
     def display_placeholder_cube(self):
-        # Create a cube
-        cube = vtk.vtkCubeSource()
-        cube.Update()
-        # Create mapper and actor
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputConnection(cube.GetOutputPort())
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-        # Add actor to the renderer
-        self.model_renderer.AddActor(actor)
+        # Create a cube source
+        cube_source = vtk.vtkCubeSource()
+        cube_source.Update()
+
+        # Create a mapper for the cube
+        cube_mapper = vtk.vtkPolyDataMapper()
+        cube_mapper.SetInputConnection(cube_source.GetOutputPort())
+
+        # Create a cube actor
+        cube_actor = vtk.vtkActor()
+        cube_actor.SetMapper(cube_mapper)
+
+        # Set the cube to wireframe
+        cube_actor.GetProperty().SetRepresentationToWireframe()
+        cube_actor.GetProperty().SetColor(1, 1, 1)  # White color
+
+        # Create axes actor
+        axes = vtk.vtkAxesActor()
+        axes.SetTotalLength(1.0, 1.0, 1.0)
+        axes.SetShaftTypeToLine()
+        axes.SetAxisLabels(True)
+        axes.SetCylinderRadius(0.02)
+
+        # Customize axes labels
+        axes.GetXAxisCaptionActor2D().GetCaptionTextProperty().SetColor(1, 0, 0)  # Red X
+        axes.GetYAxisCaptionActor2D().GetCaptionTextProperty().SetColor(0, 1, 0)  # Green Y
+        axes.GetZAxisCaptionActor2D().GetCaptionTextProperty().SetColor(0, 0, 1)  # Blue Z
+
+        # Add the cube actor and axes to the renderer
+        self.model_renderer.AddActor(cube_actor)
+        self.model_renderer.AddActor(axes)
+
+        # Set background color to light blue
+        self.model_renderer.SetBackground(0.68, 0.85, 0.9)  # Light blue background
+
         self.model_renderer.ResetCamera()
         self.model_vtkWidget.GetRenderWindow().Render()
+
+
 
     def generate_3d_model(self):
         # Implement the 3D model generation logic
