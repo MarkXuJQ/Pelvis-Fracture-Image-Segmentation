@@ -1,16 +1,17 @@
 # ct_viewer.py
 
 import vtk
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSlider, QLabel
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QSlider, QLabel, QSizePolicy
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import numpy as np
 import SimpleITK as sitk
 import vtk.util.numpy_support as vtk_np
 
 class CTViewer(QWidget):
-    def __init__(self, sitk_image):
+    def __init__(self, sitk_image, render_model=False):
         super().__init__()
         self.sitk_image = sitk_image
+        self.render_model = render_model
 
         # Convert SimpleITK image to NumPy array
         self.image_array = sitk.GetArrayFromImage(self.sitk_image)
@@ -29,8 +30,9 @@ class CTViewer(QWidget):
         self.crosshair_lines_axial = []
         self.crosshair_lines_coronal = []
         self.crosshair_lines_sagittal = []
-
         self.initUI()
+
+        self.initModelWindow()
 
     def initUI(self):
         # Create VTK widgets and renderers for each view
@@ -76,10 +78,6 @@ class CTViewer(QWidget):
         self.slider_sagittal.setValue(self.slice_indices[2])
         self.slider_sagittal.valueChanged.connect(self.update_sagittal_view)
 
-        # Layouts
-        layout = QVBoxLayout()
-        views_layout = QHBoxLayout()
-
         # Axial view layout
         axial_layout = QVBoxLayout()
         axial_layout.addWidget(QLabel('Axial View'))
@@ -98,23 +96,48 @@ class CTViewer(QWidget):
         sagittal_layout.addWidget(self.vtkWidget_sagittal)
         sagittal_layout.addWidget(self.slider_sagittal)
 
-        # Add layouts to views_layout
-        views_layout.addLayout(axial_layout)
-        views_layout.addLayout(coronal_layout)
-        views_layout.addLayout(sagittal_layout)
+        # Set size policies
+        self.vtkWidget_axial.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.vtkWidget_coronal.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.vtkWidget_sagittal.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # Add views_layout to main layout
-        layout.addLayout(views_layout)
-        self.setLayout(layout)
+        # Initialize the model window widget in the top-right corner
+        self.model_vtkWidget = QVTKRenderWindowInteractor(self)
+        self.model_renderer = vtk.vtkRenderer()
+        self.model_vtkWidget.GetRenderWindow().AddRenderer(self.model_renderer)
+        self.model_vtkWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        model_layout = QVBoxLayout()
+        model_layout.addWidget(QLabel('3D Model'))
+        model_layout.addWidget(self.model_vtkWidget)
+
+        # Create a grid layout
+        grid_layout = QGridLayout()
+        grid_layout.addLayout(axial_layout, 0, 0)   # Top Left
+        grid_layout.addLayout(model_layout, 0, 1)   # Top Right
+        grid_layout.addLayout(coronal_layout, 1, 0) # Bottom Left
+        grid_layout.addLayout(sagittal_layout, 1, 1) # Bottom Right
+
+        # Set stretch factors
+        grid_layout.setRowStretch(0, 1)
+        grid_layout.setRowStretch(1, 1)
+        grid_layout.setColumnStretch(0, 1)
+        grid_layout.setColumnStretch(1, 1)
+
+        # Set the grid layout as the main layout
+        self.setLayout(grid_layout)
 
         # Initialize VTK widgets
+        self.model_vtkWidget.Initialize()
+        self.model_vtkWidget.Start()
+
         self.vtkWidget_axial.Initialize()
         self.vtkWidget_coronal.Initialize()
         self.vtkWidget_sagittal.Initialize()
-
         self.vtkWidget_axial.Start()
         self.vtkWidget_coronal.Start()
         self.vtkWidget_sagittal.Start()
+
 
     def create_crosshairs(self, renderer):
         # Create two lines for the crosshair
@@ -230,3 +253,44 @@ class CTViewer(QWidget):
         self.vtkWidget_axial.GetRenderWindow().Render()
         self.vtkWidget_coronal.GetRenderWindow().Render()
         self.vtkWidget_sagittal.GetRenderWindow().Render()
+
+    def initModelWindow(self):
+        if self.render_model:
+            self.generate_and_display_model()
+        else:
+            self.display_placeholder_cube()
+
+    def generate_and_display_model(self):
+        # Generate the 3D model
+        poly_data = self.generate_3d_model()
+        # Create mapper and actor
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(poly_data)
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        # Add actor to the renderer
+        self.model_renderer.AddActor(actor)
+        self.model_renderer.ResetCamera()
+        self.model_vtkWidget.GetRenderWindow().Render()
+
+    def display_placeholder_cube(self):
+        # Create a cube
+        cube = vtk.vtkCubeSource()
+        cube.Update()
+        # Create mapper and actor
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(cube.GetOutputPort())
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        # Add actor to the renderer
+        self.model_renderer.AddActor(actor)
+        self.model_renderer.ResetCamera()
+        self.model_vtkWidget.GetRenderWindow().Render()
+
+    def generate_3d_model(self):
+        # Implement the 3D model generation logic
+        # Use the code provided earlier to generate the model
+        # Return vtkPolyData
+        # For simplicity, I'll provide a placeholder implementation
+        # Replace this with the actual model generation code
+        return vtk.vtkPolyData()

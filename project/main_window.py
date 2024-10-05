@@ -1,6 +1,6 @@
 # main_window.py
 
-from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox, QToolBar
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
 import SimpleITK as sitk
@@ -11,7 +11,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Medical Image Viewer")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1200, 800)
         self.viewer = None  # Will hold the current image viewer
         self.render_on_open = False
         self.initUI()
@@ -42,6 +42,17 @@ class MainWindow(QMainWindow):
 
         # Save the action for later use
         self.save_as_action = save_as_action
+        
+        # Create a toolbar
+        toolbar = QToolBar("Main Toolbar")
+        self.addToolBar(toolbar)
+
+        # Add "Generate Model" button to the toolbar
+        generate_model_action = QAction('Generate Model', self)
+        generate_model_action.triggered.connect(self.generate_model)
+        generate_model_action.setEnabled(False)
+        toolbar.addAction(generate_model_action)
+        self.generate_model_action = generate_model_action
 
         # Status bar
         self.statusBar().showMessage('Ready')
@@ -64,7 +75,8 @@ class MainWindow(QMainWindow):
                 self.viewer = XRayViewer(image_array)
             elif dimension == 3:
                 # Display 3D image
-                self.viewer = CTViewer(self.image)
+                self.viewer = CTViewer(self.image, render_model=self.render_on_open)
+                self.generate_model_action.setEnabled(True)
             else:
                 QMessageBox.warning(self, "Unsupported Image", "The selected image has unsupported dimensions.")
                 return
@@ -140,6 +152,14 @@ class MainWindow(QMainWindow):
         else:
             # For 2D images
             sitk.WriteImage(image, save_path) 
+            
+    def generate_model(self):
+        if hasattr(self.viewer, 'generate_and_display_model'):
+            self.viewer.render_model = True
+            self.viewer.generate_and_display_model()
+        else:
+            QMessageBox.warning(self, "Not Available", "Model generation is not available for this image.")
+
     def open_settings(self):
         dialog = SettingsDialog(self, render_on_open=self.render_on_open)
         if dialog.exec_():
