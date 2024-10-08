@@ -129,11 +129,11 @@ class CTViewer(QWidget):
 
         # Initialize VTK widgets
         self.model_vtkWidget.Initialize()
-        self.model_vtkWidget.Start()
-
         self.vtkWidget_axial.Initialize()
         self.vtkWidget_coronal.Initialize()
         self.vtkWidget_sagittal.Initialize()
+
+        self.model_vtkWidget.Start()
         self.vtkWidget_axial.Start()
         self.vtkWidget_coronal.Start()
         self.vtkWidget_sagittal.Start()
@@ -344,3 +344,41 @@ class CTViewer(QWidget):
         # Call the base class close method
         super().close()
     # Call the base class close method if necessary
+    def generate_3d_model(self):
+        # Convert the SimpleITK image to a VTK image
+        sitk_image = sitk.Cast(self.sitk_image, sitk.sitkFloat32)
+        vtk_image = vtk.vtkImageData()
+        vtk_image.SetDimensions(sitk_image.GetSize())
+    
+        spacing = sitk_image.GetSpacing()
+        vtk_image.SetSpacing(spacing)
+
+        origin = sitk_image.GetOrigin()
+        vtk_image.SetOrigin(origin)
+
+        # Convert SimpleITK image to numpy array
+        image_array = sitk.GetArrayFromImage(sitk_image)
+
+        # Apply threshold to isolate certain structures (e.g., bones)
+        lower_threshold = 300  # example threshold for bones in Hounsfield units
+        upper_threshold = 3000  # example upper limit for bones
+        thresholded_image = np.where((image_array >= lower_threshold) & (image_array <= upper_threshold), image_array, 0)
+
+        vtk_data_array = vtk_np.numpy_to_vtk(
+            num_array=thresholded_image.ravel(),
+            deep=True,
+            array_type=vtk.VTK_FLOAT
+        )
+    
+        vtk_image.GetPointData().SetScalars(vtk_data_array)
+
+        # Extract a 3D surface from the thresholded volume using Marching Cubes algorithm
+        contour_filter = vtk.vtkMarchingCubes()
+        contour_filter.SetInputData(vtk_image)
+        contour_filter.SetValue(0, lower_threshold)  # Isosurface value (use the lower threshold)
+        contour_filter.Update()
+
+        # Get the polydata (3D surface) from the contour filter
+        poly_data = contour_filter.GetOutput()
+
+        return poly_data
