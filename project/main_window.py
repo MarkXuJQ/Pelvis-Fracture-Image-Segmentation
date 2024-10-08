@@ -1,5 +1,3 @@
-# main_window.py
-
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox, QToolBar
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
@@ -54,6 +52,13 @@ class MainWindow(QMainWindow):
         toolbar.addAction(generate_model_action)
         self.generate_model_action = generate_model_action
 
+        # Add "Toggle Crosshair" button to the toolbar
+        toggle_crosshair_action = QAction('Toggle Crosshair', self)
+        toggle_crosshair_action.triggered.connect(self.toggle_crosshair)
+        toggle_crosshair_action.setEnabled(False)  # Initially disabled
+        toolbar.addAction(toggle_crosshair_action)
+        self.toggle_crosshair_action = toggle_crosshair_action
+
         # Status bar
         self.statusBar().showMessage('Ready')
 
@@ -77,6 +82,7 @@ class MainWindow(QMainWindow):
                 # Display 3D image
                 self.viewer = CTViewer(self.image, render_model=self.render_on_open)
                 self.generate_model_action.setEnabled(True)
+                self.toggle_crosshair_action.setEnabled(True)  # Enable crosshair button
             else:
                 QMessageBox.warning(self, "Unsupported Image", "The selected image has unsupported dimensions.")
                 return
@@ -159,6 +165,12 @@ class MainWindow(QMainWindow):
             self.viewer.generate_and_display_model()
         else:
             QMessageBox.warning(self, "Not Available", "Model generation is not available for this image.")
+
+    def toggle_crosshair(self):
+        if self.viewer and hasattr(self.viewer, 'toggle_crosshair'):
+            self.viewer.toggle_crosshair()
+        else:
+            QMessageBox.warning(self, "Not Available", "Crosshair functionality is not available for this image viewer.")
 
     def open_settings(self):
         dialog = SettingsDialog(self, render_on_open=self.render_on_open)
