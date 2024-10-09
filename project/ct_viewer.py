@@ -1,5 +1,3 @@
-# ct_viewer.py
-
 import vtk
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QSlider, QLabel, QSizePolicy
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
@@ -12,6 +10,7 @@ class CTViewer(QWidget):
         super().__init__()
         self.sitk_image = sitk_image
         self.render_model = render_model
+        self.crosshair_visible = False
 
         # Convert SimpleITK image to NumPy array
         self.image_array = sitk.GetArrayFromImage(self.sitk_image)
@@ -30,82 +29,51 @@ class CTViewer(QWidget):
         self.crosshair_lines_axial = []
         self.crosshair_lines_coronal = []
         self.crosshair_lines_sagittal = []
+        
         self.initUI()
-
         self.initModelWindow()
 
     def initUI(self):
         # Create VTK widgets and renderers for each view
-        self.vtkWidget_axial = QVTKRenderWindowInteractor(self)
-        self.vtkWidget_coronal = QVTKRenderWindowInteractor(self)
-        self.vtkWidget_sagittal = QVTKRenderWindowInteractor(self)
-
-        self.renderer_axial = vtk.vtkRenderer()
-        self.renderer_coronal = vtk.vtkRenderer()
-        self.renderer_sagittal = vtk.vtkRenderer()
-
-        self.vtkWidget_axial.GetRenderWindow().AddRenderer(self.renderer_axial)
-        self.vtkWidget_coronal.GetRenderWindow().AddRenderer(self.renderer_coronal)
-        self.vtkWidget_sagittal.GetRenderWindow().AddRenderer(self.renderer_sagittal)
-
-        # Create crosshairs for each view
-        self.crosshair_lines_axial = self.create_crosshairs(self.renderer_axial)
-        self.crosshair_lines_coronal = self.create_crosshairs(self.renderer_coronal)
-        self.crosshair_lines_sagittal = self.create_crosshairs(self.renderer_sagittal)
-
-        # Initialize the views
-        self.update_views()
+        self.vtkWidget_axial = self.create_vtk_widget()
+        self.vtkWidget_coronal = self.create_vtk_widget()
+        self.vtkWidget_sagittal = self.create_vtk_widget()
 
         # Create sliders for each view
-        self.slider_axial = QSlider()
-        self.slider_axial.setOrientation(1)  # Horizontal
-        self.slider_axial.setMinimum(0)
-        self.slider_axial.setMaximum(self.dimensions[0] - 1)
-        self.slider_axial.setValue(self.slice_indices[0])
-        self.slider_axial.valueChanged.connect(self.update_axial_view)
+        self.slider_axial = self.create_slider(0, self.dimensions[0] - 1, self.slice_indices[0], self.update_axial_view)
+        self.slider_coronal = self.create_slider(1, self.dimensions[1] - 1, self.slice_indices[1], self.update_coronal_view)
+        self.slider_sagittal = self.create_slider(2, self.dimensions[2] - 1, self.slice_indices[2], self.update_sagittal_view)
 
-        self.slider_coronal = QSlider()
-        self.slider_coronal.setOrientation(1)
-        self.slider_coronal.setMinimum(0)
-        self.slider_coronal.setMaximum(self.dimensions[1] - 1)
-        self.slider_coronal.setValue(self.slice_indices[1])
-        self.slider_coronal.valueChanged.connect(self.update_coronal_view)
+        # Set layouts
+        self.setLayouts()
 
-        self.slider_sagittal = QSlider()
-        self.slider_sagittal.setOrientation(1)
-        self.slider_sagittal.setMinimum(0)
-        self.slider_sagittal.setMaximum(self.dimensions[2] - 1)
-        self.slider_sagittal.setValue(self.slice_indices[2])
-        self.slider_sagittal.valueChanged.connect(self.update_sagittal_view)
+        # Initialize views
+        self.update_views()
 
-        # Axial view layout
-        axial_layout = QVBoxLayout()
-        axial_layout.addWidget(QLabel('Axial View'))
-        axial_layout.addWidget(self.vtkWidget_axial)
-        axial_layout.addWidget(self.slider_axial)
+    def create_vtk_widget(self):
+        vtk_widget = QVTKRenderWindowInteractor(self)
+        renderer = vtk.vtkRenderer()
+        vtk_widget.GetRenderWindow().AddRenderer(renderer)
+        return vtk_widget, renderer
 
-        # Coronal view layout
-        coronal_layout = QVBoxLayout()
-        coronal_layout.addWidget(QLabel('Coronal View'))
-        coronal_layout.addWidget(self.vtkWidget_coronal)
-        coronal_layout.addWidget(self.slider_coronal)
+    def create_slider(self, dim, max_value, initial_value, update_function):
+        slider = QSlider()
+        slider.setOrientation(1)  # Horizontal
+        slider.setMinimum(0)
+        slider.setMaximum(max_value)
+        slider.setValue(initial_value)
+        slider.valueChanged.connect(update_function)
+        return slider
 
-        # Sagittal view layout
-        sagittal_layout = QVBoxLayout()
-        sagittal_layout.addWidget(QLabel('Sagittal View'))
-        sagittal_layout.addWidget(self.vtkWidget_sagittal)
-        sagittal_layout.addWidget(self.slider_sagittal)
-
-        # Set size policies
-        self.vtkWidget_axial.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.vtkWidget_coronal.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.vtkWidget_sagittal.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+    def setLayouts(self):
+        axial_layout = self.create_view_layout('Axial View', self.vtkWidget_axial[0], self.slider_axial)
+        coronal_layout = self.create_view_layout('Coronal View', self.vtkWidget_coronal[0], self.slider_coronal)
+        sagittal_layout = self.create_view_layout('Sagittal View', self.vtkWidget_sagittal[0], self.slider_sagittal)
 
         # Initialize the model window widget in the top-right corner
         self.model_vtkWidget = QVTKRenderWindowInteractor(self)
         self.model_renderer = vtk.vtkRenderer()
         self.model_vtkWidget.GetRenderWindow().AddRenderer(self.model_renderer)
-        self.model_vtkWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         model_layout = QVBoxLayout()
         model_layout.addWidget(QLabel('3D Model'))
@@ -128,40 +96,25 @@ class CTViewer(QWidget):
         self.setLayout(grid_layout)
 
         # Initialize VTK widgets
+        self.initialize_vtk_widgets()
+
+    def create_view_layout(self, title, vtk_widget, slider):
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel(title))
+        layout.addWidget(vtk_widget)
+        layout.addWidget(slider)
+        return layout
+
+    def initialize_vtk_widgets(self):
         self.model_vtkWidget.Initialize()
+        self.vtkWidget_axial[0].Initialize()
+        self.vtkWidget_coronal[0].Initialize()
+        self.vtkWidget_sagittal[0].Initialize()
+
         self.model_vtkWidget.Start()
-
-        self.vtkWidget_axial.Initialize()
-        self.vtkWidget_coronal.Initialize()
-        self.vtkWidget_sagittal.Initialize()
-        self.vtkWidget_axial.Start()
-        self.vtkWidget_coronal.Start()
-        self.vtkWidget_sagittal.Start()
-
-
-    def create_crosshairs(self, renderer):
-        # Create two lines for the crosshair
-        line1 = vtk.vtkLineSource()
-        line2 = vtk.vtkLineSource()
-
-        # Create mappers and actors
-        mapper1 = vtk.vtkPolyDataMapper()
-        mapper1.SetInputConnection(line1.GetOutputPort())
-        actor1 = vtk.vtkActor()
-        actor1.SetMapper(mapper1)
-        actor1.GetProperty().SetColor(1, 0, 0)  # Red color
-
-        mapper2 = vtk.vtkPolyDataMapper()
-        mapper2.SetInputConnection(line2.GetOutputPort())
-        actor2 = vtk.vtkActor()
-        actor2.SetMapper(mapper2)
-        actor2.GetProperty().SetColor(1, 0, 0)  # Red color
-
-        # Add actors to the renderer
-        renderer.AddActor(actor1)
-        renderer.AddActor(actor2)
-
-        return (line1, line2)  # Return line sources to update positions later
+        self.vtkWidget_axial[0].Start()
+        self.vtkWidget_coronal[0].Start()
+        self.vtkWidget_sagittal[0].Start()
 
     def update_views(self):
         self.update_axial_view(self.slice_indices[0])
@@ -173,21 +126,21 @@ class CTViewer(QWidget):
         self.slice_indices[0] = value
         slice_data = self.image_array[value, :, :]
         vtk_image = self.numpy_to_vtk_image(slice_data)
-        self.display_image(vtk_image, self.renderer_axial, self.vtkWidget_axial)
+        self.display_image(vtk_image, self.vtkWidget_axial[1])
         self.update_crosshairs()
 
     def update_coronal_view(self, value):
         self.slice_indices[1] = value
         slice_data = self.image_array[:, value, :]
         vtk_image = self.numpy_to_vtk_image(slice_data)
-        self.display_image(vtk_image, self.renderer_coronal, self.vtkWidget_coronal)
+        self.display_image(vtk_image, self.vtkWidget_coronal[1])
         self.update_crosshairs()
 
     def update_sagittal_view(self, value):
         self.slice_indices[2] = value
         slice_data = self.image_array[:, :, value]
         vtk_image = self.numpy_to_vtk_image(slice_data)
-        self.display_image(vtk_image, self.renderer_sagittal, self.vtkWidget_sagittal)
+        self.display_image(vtk_image, self.vtkWidget_sagittal[1])
         self.update_crosshairs()
 
     def numpy_to_vtk_image(self, image):
@@ -203,56 +156,99 @@ class CTViewer(QWidget):
         vtk_image.GetPointData().SetScalars(vtk_data_array)
         return vtk_image
 
-    def display_image(self, vtk_image, renderer, vtk_widget):
+    def display_image(self, vtk_image, vtk_widget):
         # Remove previous items
-        renderer.RemoveAllViewProps()
+        vtk_widget.GetRenderWindow().GetRenderers().GetFirstRenderer().RemoveAllViewProps()
 
         # Create image actor
         image_actor = vtk.vtkImageActor()
         image_actor.SetInputData(vtk_image)
 
         # Add actor to the renderer
-        renderer.AddActor(image_actor)
-        renderer.ResetCamera()
+        vtk_widget.GetRenderWindow().GetRenderers().GetFirstRenderer().AddActor(image_actor)
+        vtk_widget.GetRenderWindow().GetRenderers().GetFirstRenderer().ResetCamera()
         vtk_widget.GetRenderWindow().Render()
+    def create_crosshair(self):
+        # Check if crosshairs already exist
+        if not self.crosshair_visible:
+            # Create crosshairs in each view
+            self.crosshair_lines_axial = self.create_crosshair_lines(self.vtkWidget_axial[1])
+            self.crosshair_lines_coronal = self.create_crosshair_lines(self.vtkWidget_coronal[1])
+            self.crosshair_lines_sagittal = self.create_crosshair_lines(self.vtkWidget_sagittal[1])
+
+            self.crosshair_visible = True  # Set the visibility flag to true
+        else:
+            # Hide crosshairs by removing them from the renderers
+            for line in self.crosshair_lines_axial + self.crosshair_lines_coronal + self.crosshair_lines_sagittal:
+                line[0].RemoveAllViewProps()  # Remove lines from renderers
+                line[1].RemoveAllViewProps()
+
+            self.crosshair_visible = False  # Set the visibility flag to false
+
+        self.update_views()  # Update views to reflect the changes
+
+
+    def create_crosshair_lines(self, renderer):
+        # Create two lines for the crosshair
+        line1 = vtk.vtkLineSource()
+        line2 = vtk.vtkLineSource()
+
+        # Create mappers and actors for both lines
+        mapper1 = vtk.vtkPolyDataMapper()
+        mapper1.SetInputConnection(line1.GetOutputPort())
+        actor1 = vtk.vtkActor()
+        actor1.SetMapper(mapper1)
+        actor1.GetProperty().SetColor(1, 0, 0)  # Red color
+        renderer.AddActor(actor1)
+
+        mapper2 = vtk.vtkPolyDataMapper()
+        mapper2.SetInputConnection(line2.GetOutputPort())
+        actor2 = vtk.vtkActor()
+        actor2.SetMapper(mapper2)
+        actor2.GetProperty().SetColor(1, 0, 0)  # Red color
+        renderer.AddActor(actor2)
+
+        return (line1, actor1), (line2, actor2)
+
 
     def update_crosshairs(self):
+        # Check if crosshairs are visible
+        if not self.crosshair_visible:
+            return
+
         dims = self.dimensions  # (Depth, Height, Width)
+        x = self.slice_indices[2]  # Sagittal index (Width)
+        y = self.slice_indices[1]  # Coronal index (Height)
 
         # Update crosshairs in axial view
-        x = self.slice_indices[2]  # Sagittal index (Width)
-        y = self.slice_indices[1]  # Coronal index (Height)
-        # Vertical line (X position)
-        self.crosshair_lines_axial[0].SetPoint1(x, 0, 0)
-        self.crosshair_lines_axial[0].SetPoint2(x, dims[1], 0)
-        # Horizontal line (Y position)
-        self.crosshair_lines_axial[1].SetPoint1(0, y, 0)
-        self.crosshair_lines_axial[1].SetPoint2(dims[2], y, 0)
+        self.crosshair_lines_axial[0][0].SetPoint1(x, 0, 0)
+        self.crosshair_lines_axial[0][0].SetPoint2(x, dims[1], 0)
+        self.crosshair_lines_axial[1][0].SetPoint1(0, y, 0)
+        self.crosshair_lines_axial[1][0].SetPoint2(dims[2], y, 0)
 
         # Update crosshairs in coronal view
-        x = self.slice_indices[2]  # Sagittal index (Width)
         z = self.slice_indices[0]  # Axial index (Depth)
-        # Vertical line (X position)
-        self.crosshair_lines_coronal[0].SetPoint1(x, 0, 0)
-        self.crosshair_lines_coronal[0].SetPoint2(x, dims[0], 0)
-        # Horizontal line (Z position)
-        self.crosshair_lines_coronal[1].SetPoint1(0, z, 0)
-        self.crosshair_lines_coronal[1].SetPoint2(dims[2], z, 0)
+        self.crosshair_lines_coronal[0][0].SetPoint1(x, 0, z)
+        self.crosshair_lines_coronal[0][0].SetPoint2(x, dims[1], z)
+        self.crosshair_lines_coronal[1][0].SetPoint1(0, y, z)
+        self.crosshair_lines_coronal[1][0].SetPoint2(dims[2], y, z)
 
         # Update crosshairs in sagittal view
-        y = self.slice_indices[1]  # Coronal index (Height)
-        z = self.slice_indices[0]  # Axial index (Depth)
-        # Vertical line (Y position)
-        self.crosshair_lines_sagittal[0].SetPoint1(y, 0, 0)
-        self.crosshair_lines_sagittal[0].SetPoint2(y, dims[0], 0)
-        # Horizontal line (Z position)
-        self.crosshair_lines_sagittal[1].SetPoint1(0, z, 0)
-        self.crosshair_lines_sagittal[1].SetPoint2(dims[1], z, 0)
+        self.crosshair_lines_sagittal[0][0].SetPoint1(0, y, z)
+        self.crosshair_lines_sagittal[0][0].SetPoint2(dims[1], y, z)
+        self.crosshair_lines_sagittal[1][0].SetPoint1(x, 0, z)
+        self.crosshair_lines_sagittal[1][0].SetPoint2(x, dims[0], z)
 
-        # Render the views to update the crosshairs
-        self.vtkWidget_axial.GetRenderWindow().Render()
-        self.vtkWidget_coronal.GetRenderWindow().Render()
-        self.vtkWidget_sagittal.GetRenderWindow().Render()
+        # Render updates
+        for vtk_widget in [self.vtkWidget_axial[1], self.vtkWidget_coronal[1], self.vtkWidget_sagittal[1]]:
+            vtk_widget.GetRenderWindow().Render()
+
+
+    def initModelWindow(self):
+        if self.render_model:
+            self.model_renderer.ResetCamera()  # Adjust camera if needed
+            # Additional model rendering logic can go here
+
 
     def initModelWindow(self):
         if self.render_model:
@@ -291,21 +287,21 @@ class CTViewer(QWidget):
         cube_actor.GetProperty().SetRepresentationToWireframe()
         cube_actor.GetProperty().SetColor(1, 1, 1)  # White color
 
-        # Create axes actor
-        axes = vtk.vtkAxesActor()
-        axes.SetTotalLength(1.0, 1.0, 1.0)
-        axes.SetShaftTypeToLine()
-        axes.SetAxisLabels(True)
-        axes.SetCylinderRadius(0.02)
+        # # Create axes actor
+        # axes = vtk.vtkAxesActor()
+        # axes.SetTotalLength(1.0, 1.0, 1.0)
+        # axes.SetShaftTypeToLine()
+        # axes.SetAxisLabels(True)
+        # axes.SetCylinderRadius(0.02)
 
-        # Customize axes labels
-        axes.GetXAxisCaptionActor2D().GetCaptionTextProperty().SetColor(1, 0, 0)  # Red X
-        axes.GetYAxisCaptionActor2D().GetCaptionTextProperty().SetColor(0, 1, 0)  # Green Y
-        axes.GetZAxisCaptionActor2D().GetCaptionTextProperty().SetColor(0, 0, 1)  # Blue Z
+        # # Customize axes labels
+        # axes.GetXAxisCaptionActor2D().GetCaptionTextProperty().SetColor(1, 0, 0)  # Red X
+        # axes.GetYAxisCaptionActor2D().GetCaptionTextProperty().SetColor(0, 1, 0)  # Green Y
+        # axes.GetZAxisCaptionActor2D().GetCaptionTextProperty().SetColor(0, 0, 1)  # Blue Z
 
         # Add the cube actor and axes to the renderer
         self.model_renderer.AddActor(cube_actor)
-        self.model_renderer.AddActor(axes)
+        # self.model_renderer.AddActor(axes)
 
         # Set background color to light blue
         self.model_renderer.SetBackground(0.68, 0.85, 0.9)  # Light blue background
@@ -313,16 +309,45 @@ class CTViewer(QWidget):
         self.model_renderer.ResetCamera()
         self.model_vtkWidget.GetRenderWindow().Render()
 
-
-
     def generate_3d_model(self):
-        # Implement the 3D model generation logic
-        # Use the code provided earlier to generate the model
-        # Return vtkPolyData
-        # For simplicity, I'll provide a placeholder implementation
-        # Replace this with the actual model generation code
-        return vtk.vtkPolyData()
+        # Convert the SimpleITK image to a VTK image
+        sitk_image = sitk.Cast(self.sitk_image, sitk.sitkFloat32)
+        vtk_image = vtk.vtkImageData()
+        vtk_image.SetDimensions(sitk_image.GetSize())
     
+        spacing = sitk_image.GetSpacing()
+        vtk_image.SetSpacing(spacing)
+
+        origin = sitk_image.GetOrigin()
+        vtk_image.SetOrigin(origin)
+
+        # Convert SimpleITK image to numpy array
+        image_array = sitk.GetArrayFromImage(sitk_image)
+
+        # Apply threshold to isolate certain structures (e.g., bones)
+        lower_threshold = 300  # example threshold for bones in Hounsfield units
+        upper_threshold = 3000  # example upper limit for bones
+        thresholded_image = np.where((image_array >= lower_threshold) & (image_array <= upper_threshold), image_array, 0)
+
+        vtk_data_array = vtk_np.numpy_to_vtk(
+            num_array=thresholded_image.ravel(),
+            deep=True,
+            array_type=vtk.VTK_FLOAT
+        )
+    
+        vtk_image.GetPointData().SetScalars(vtk_data_array)
+
+        # Extract a 3D surface from the thresholded volume using Marching Cubes algorithm
+        contour_filter = vtk.vtkMarchingCubes()
+        contour_filter.SetInputData(vtk_image)
+        contour_filter.SetValue(0, lower_threshold)  # Isosurface value (use the lower threshold)
+        contour_filter.Update()
+
+        # Get the polydata (3D surface) from the contour filter
+        poly_data = contour_filter.GetOutput()
+
+        return poly_data
+
     def close(self):
         # Clean up VTK widgets
         if hasattr(self, 'vtkWidget_axial'):
@@ -343,4 +368,3 @@ class CTViewer(QWidget):
 
         # Call the base class close method
         super().close()
-    # Call the base class close method if necessary

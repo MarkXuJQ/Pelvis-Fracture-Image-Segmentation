@@ -1,5 +1,3 @@
-# main_window.py
-
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox, QToolBar
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
@@ -54,6 +52,13 @@ class MainWindow(QMainWindow):
         toolbar.addAction(generate_model_action)
         self.generate_model_action = generate_model_action
 
+        # Add "Create Crosshair" button to the toolbar
+        create_crosshairs_action = QAction('Create Crosshair', self)
+        create_crosshairs_action.triggered.connect(self.create_crosshairs)
+        create_crosshairs_action.setEnabled(False)  # Initially disabled
+        toolbar.addAction(create_crosshairs_action)
+        self.create_crosshairs_action = create_crosshairs_action
+
         # Status bar
         self.statusBar().showMessage('Ready')
 
@@ -77,6 +82,7 @@ class MainWindow(QMainWindow):
                 # Display 3D image
                 self.viewer = CTViewer(self.image, render_model=self.render_on_open)
                 self.generate_model_action.setEnabled(True)
+                self.create_crosshairs_action.setEnabled(True)  # Enable crosshair button
             else:
                 QMessageBox.warning(self, "Unsupported Image", "The selected image has unsupported dimensions.")
                 return
@@ -159,6 +165,19 @@ class MainWindow(QMainWindow):
             self.viewer.generate_and_display_model()
         else:
             QMessageBox.warning(self, "Not Available", "Model generation is not available for this image.")
+
+    def create_crosshairs(self):
+        if self.viewer is None:
+            QMessageBox.warning(self, "Not Available", "The image viewer is not initialized.")
+            return
+        
+        if hasattr(self.viewer, 'create_crosshairs'):
+            try:
+                self.viewer.create_crosshairs()
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"An error occurred while creating crosshairs: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Not Available", "Crosshair functionality is not available for this image viewer.")
 
     def open_settings(self):
         dialog = SettingsDialog(self, render_on_open=self.render_on_open)
