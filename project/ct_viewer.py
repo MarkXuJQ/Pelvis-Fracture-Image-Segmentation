@@ -133,21 +133,18 @@ class CTViewer(QWidget):
         slice_data = self.image_array[value, :, :]
         vtk_image = self.numpy_to_vtk_image(slice_data)
         self.display_image(vtk_image, self.vtkWidget_axial[1])
-        self.update_crosshairs()
 
     def update_coronal_view(self, value):
         self.slice_indices[1] = value
         slice_data = self.image_array[:, value, :]
         vtk_image = self.numpy_to_vtk_image(slice_data)
         self.display_image(vtk_image, self.vtkWidget_coronal[1])
-        self.update_crosshairs()
 
     def update_sagittal_view(self, value):
         self.slice_indices[2] = value
         slice_data = self.image_array[:, :, value]
         vtk_image = self.numpy_to_vtk_image(slice_data)
         self.display_image(vtk_image, self.vtkWidget_sagittal[1])
-        self.update_crosshairs()
 
     def numpy_to_vtk_image(self, image):
         # Convert NumPy array to VTK image
@@ -182,48 +179,97 @@ class CTViewer(QWidget):
 
         vtk_widget.GetRenderWindow().Render()
         
-    def create_crosshair(self):
-        # Check if crosshairs already exist
-        if not self.crosshair_visible:
-            # Create crosshairs in each view
+    def initModelWindow(self):
+        if self.render_model:
+            self.generate_and_display_model()
+        else:
+            self.display_placeholder_cube()
+            
+        # Create crosshairs for the 3D view
+        self.crosshair_lines_3d = self.create_3d_crosshair_lines(self.model_renderer)
+
+        # Add interaction callback for mouse dragging in the 3D view
+        interactor = self.model_vtkWidget.GetRenderWindow().GetInteractor()
+        interactor.AddObserver("LeftButtonPressEvent", self.on_mouse_drag)
+        interactor.AddObserver("MouseMoveEvent", self.on_mouse_drag)
+        
+    def on_mouse_drag(self, obj, event):
+        # Get the mouse click position
+        click_pos = obj.GetEventPosition()
+        picker = vtk.vtkPropPicker()
+        picker.Pick(click_pos[0], click_pos[1], 0, self.model_renderer)
+
+        # Update the crosshair position and slice indices if a valid pick occurred
+        picked_position = picker.GetPickPosition()
+        if picked_position:
+            # Update slice indices based on the picked position
+            self.slice_indices = [
+                int(picked_position[2]),  # Depth (Axial)
+                int(picked_position[1]),  # Height (Coronal)
+                int(picked_position[0])   # Width (Sagittal)
+            ]
+
+            # Update crosshairs to match the picked position
+            self.update_crosshairs()
+
+        obj.GetRenderWindow().Render()
+
+    def create_crosshairs(self):
+        # Create crosshairs in 3D model and slice views
+        self.crosshair_visible = True  # Set visibility flag to true
+
+        # Create 3D crosshair lines
+        if not self.crosshair_lines_3d:
+            self.crosshair_lines_3d = self.create_3d_crosshair_lines(self.model_renderer)
+
+        # Create crosshairs in axial, coronal, sagittal views
+        if not self.crosshair_lines_axial:
             self.crosshair_lines_axial = self.create_crosshair_lines(self.vtkWidget_axial[1])
+        if not self.crosshair_lines_coronal:
             self.crosshair_lines_coronal = self.create_crosshair_lines(self.vtkWidget_coronal[1])
+        if not self.crosshair_lines_sagittal:
             self.crosshair_lines_sagittal = self.create_crosshair_lines(self.vtkWidget_sagittal[1])
 
-            self.crosshair_visible = True  # Set the visibility flag to true
-        else:
-            # Hide crosshairs by removing them from the renderers
-            for line in self.crosshair_lines_axial + self.crosshair_lines_coronal + self.crosshair_lines_sagittal:
-                line[0].RemoveAllViewProps()  # Remove lines from renderers
-                line[1].RemoveAllViewProps()
+        # Update the views to show crosshairs
+        self.update_views()
+        
+    def create_3d_crosshair_lines(self, renderer):
+        # Create three lines for the crosshair in the 3D view
+        line_x = vtk.vtkLineSource()
+        line_y = vtk.vtkLineSource()
+        line_z = vtk.vtkLineSource()
 
-            self.crosshair_visible = False  # Set the visibility flag to false
+        # Create mappers and actors for each line
+        crosshair_actors = []
+        for line in [line_x, line_y, line_z]:
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputConnection(line.GetOutputPort())
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetColor(1, 1, 0)  # Yellow color for better visibility in 3D
+            actor.GetProperty().SetLineWidth(2)    # Thicker line width
+            renderer.AddActor(actor)
+            crosshair_actors.append((line, actor))
 
-        self.update_views()  # Update views to reflect the changes
-
-
+        return crosshair_actors
+    
     def create_crosshair_lines(self, renderer):
-        # Create two lines for the crosshair
-        line1 = vtk.vtkLineSource()
-        line2 = vtk.vtkLineSource()
+        # Create two lines for the crosshair in each view
+        line1 = vtk.vtkLineSource()  # Horizontal line
+        line2 = vtk.vtkLineSource()  # Vertical line
 
-        # Create mappers and actors for both lines
-        mapper1 = vtk.vtkPolyDataMapper()
-        mapper1.SetInputConnection(line1.GetOutputPort())
-        actor1 = vtk.vtkActor()
-        actor1.SetMapper(mapper1)
-        actor1.GetProperty().SetColor(1, 0, 0)  # Red color
-        renderer.AddActor(actor1)
+        crosshair_actors = []
+        for line in [line1, line2]:
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputConnection(line.GetOutputPort())
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetColor(1, 0, 0)  # Red color for better visibility
+            actor.GetProperty().SetLineWidth(2)    # Thicker line width
+            renderer.AddActor(actor)
+            crosshair_actors.append((line, actor))
 
-        mapper2 = vtk.vtkPolyDataMapper()
-        mapper2.SetInputConnection(line2.GetOutputPort())
-        actor2 = vtk.vtkActor()
-        actor2.SetMapper(mapper2)
-        actor2.GetProperty().SetColor(1, 0, 0)  # Red color
-        renderer.AddActor(actor2)
-
-        return (line1, actor1), (line2, actor2)
-
+        return crosshair_actors
 
     def update_crosshairs(self):
         # Check if crosshairs are visible
@@ -233,6 +279,15 @@ class CTViewer(QWidget):
         dims = self.dimensions  # (Depth, Height, Width)
         x = self.slice_indices[2]  # Sagittal index (Width)
         y = self.slice_indices[1]  # Coronal index (Height)
+        z = self.slice_indices[0]  # Axial index (Depth)
+
+        # Update crosshairs in 3D model view
+        self.crosshair_lines_3d[0][0].SetPoint1(x, 0, z)
+        self.crosshair_lines_3d[0][0].SetPoint2(x, dims[1] - 1, z)
+        self.crosshair_lines_3d[1][0].SetPoint1(0, y, z)
+        self.crosshair_lines_3d[1][0].SetPoint2(dims[2] - 1, y, z)
+        self.crosshair_lines_3d[2][0].SetPoint1(x, y, 0)
+        self.crosshair_lines_3d[2][0].SetPoint2(x, y, dims[0] - 1)
 
         # Update crosshairs in axial view
         self.crosshair_lines_axial[0][0].SetPoint1(x, 0, 0)
@@ -241,35 +296,20 @@ class CTViewer(QWidget):
         self.crosshair_lines_axial[1][0].SetPoint2(dims[2], y, 0)
 
         # Update crosshairs in coronal view
-        z = self.slice_indices[0]  # Axial index (Depth)
-        self.crosshair_lines_coronal[0][0].SetPoint1(x, 0, z)
-        self.crosshair_lines_coronal[0][0].SetPoint2(x, dims[1], z)
-        self.crosshair_lines_coronal[1][0].SetPoint1(0, y, z)
-        self.crosshair_lines_coronal[1][0].SetPoint2(dims[2], y, z)
+        self.crosshair_lines_coronal[0][0].SetPoint1(0, y, z)
+        self.crosshair_lines_coronal[0][0].SetPoint2(dims[2] - 1, y, z)
+        self.crosshair_lines_coronal[1][0].SetPoint1(x, 0, z)
+        self.crosshair_lines_coronal[1][0].SetPoint2(x, dims[1] - 1, z)
 
         # Update crosshairs in sagittal view
         self.crosshair_lines_sagittal[0][0].SetPoint1(0, y, z)
-        self.crosshair_lines_sagittal[0][0].SetPoint2(dims[1], y, z)
+        self.crosshair_lines_sagittal[0][0].SetPoint2(dims[1] - 1, y, z)
         self.crosshair_lines_sagittal[1][0].SetPoint1(x, 0, z)
-        self.crosshair_lines_sagittal[1][0].SetPoint2(x, dims[0], z)
+        self.crosshair_lines_sagittal[1][0].SetPoint2(x, dims[0] - 1, z)
 
-        # Render updates
-        for vtk_widget in [self.vtkWidget_axial[1], self.vtkWidget_coronal[1], self.vtkWidget_sagittal[1]]:
+        # Render updates for all views
+        for vtk_widget in [self.vtkWidget_axial[1], self.vtkWidget_coronal[1], self.vtkWidget_sagittal[1], self.model_vtkWidget]:
             vtk_widget.GetRenderWindow().Render()
-
-
-    def initModelWindow(self):
-        if self.render_model:
-            self.model_renderer.ResetCamera()  # Adjust camera if needed
-            # Additional model rendering logic can go here
-
-
-    def initModelWindow(self):
-        if self.render_model:
-            self.generate_and_display_model()
-        else:
-            self.display_placeholder_cube()
-
     def generate_and_display_model(self):
         # Generate the 3D model
         poly_data = self.generate_3d_model()
