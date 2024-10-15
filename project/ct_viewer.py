@@ -54,8 +54,14 @@ class CTViewer(QWidget):
         vtk_widget = QVTKRenderWindowInteractor(self)
         renderer = vtk.vtkRenderer()
         vtk_widget.GetRenderWindow().AddRenderer(renderer)
-        return vtk_widget, renderer
 
+        # Set interactor style to disable camera rotation
+        interactor = vtk_widget.GetRenderWindow().GetInteractor()
+        interactor_style = vtk.vtkInteractorStyleImage()  # This style allows window/level adjustments
+        interactor.SetInteractorStyle(interactor_style)
+
+        return vtk_widget, renderer
+    
     def create_slider(self, dim, max_value, initial_value, update_function):
         slider = QSlider()
         slider.setOrientation(1)  # Horizontal
@@ -158,16 +164,24 @@ class CTViewer(QWidget):
 
     def display_image(self, vtk_image, vtk_widget):
         # Remove previous items
-        vtk_widget.GetRenderWindow().GetRenderers().GetFirstRenderer().RemoveAllViewProps()
+        renderer = vtk_widget.GetRenderWindow().GetRenderers().GetFirstRenderer()
+        renderer.RemoveAllViewProps()
 
         # Create image actor
         image_actor = vtk.vtkImageActor()
         image_actor.SetInputData(vtk_image)
 
         # Add actor to the renderer
-        vtk_widget.GetRenderWindow().GetRenderers().GetFirstRenderer().AddActor(image_actor)
-        vtk_widget.GetRenderWindow().GetRenderers().GetFirstRenderer().ResetCamera()
+        renderer.AddActor(image_actor)
+
+        if not hasattr(vtk_widget, 'camera_initialized') or not vtk_widget.camera_initialized:
+            camera = renderer.GetActiveCamera()
+            camera.ParallelProjectionOn()  # Use parallel projection for a flat view
+            renderer.ResetCamera()
+            vtk_widget.camera_initialized = True
+
         vtk_widget.GetRenderWindow().Render()
+        
     def create_crosshair(self):
         # Check if crosshairs already exist
         if not self.crosshair_visible:
@@ -351,15 +365,15 @@ class CTViewer(QWidget):
     def close(self):
         # Clean up VTK widgets
         if hasattr(self, 'vtkWidget_axial'):
-            self.vtkWidget_axial.Finalize()
+            self.vtkWidget_axial[0].Finalize()
             del self.vtkWidget_axial
 
         if hasattr(self, 'vtkWidget_coronal'):
-            self.vtkWidget_coronal.Finalize()
+            self.vtkWidget_coronal[0].Finalize()
             del self.vtkWidget_coronal
 
         if hasattr(self, 'vtkWidget_sagittal'):
-            self.vtkWidget_sagittal.Finalize()
+            self.vtkWidget_sagittal[0].Finalize()
             del self.vtkWidget_sagittal
 
         if hasattr(self, 'model_vtkWidget'):
