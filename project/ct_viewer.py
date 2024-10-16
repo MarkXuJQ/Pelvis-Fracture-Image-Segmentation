@@ -30,6 +30,9 @@ class CTViewer(QWidget):
         self.crosshair_lines_coronal = []
         self.crosshair_lines_sagittal = []
         
+        self.is_updating_crosshairs = False
+
+        
         self.initUI()
         self.initModelWindow()
 
@@ -133,18 +136,21 @@ class CTViewer(QWidget):
         slice_data = self.image_array[value, :, :]
         vtk_image = self.numpy_to_vtk_image(slice_data)
         self.display_image(vtk_image, self.vtkWidget_axial[1])
+        self.update_crosshairs()
 
     def update_coronal_view(self, value):
         self.slice_indices[1] = value
         slice_data = self.image_array[:, value, :]
         vtk_image = self.numpy_to_vtk_image(slice_data)
         self.display_image(vtk_image, self.vtkWidget_coronal[1])
+        self.update_crosshairs()
 
     def update_sagittal_view(self, value):
         self.slice_indices[2] = value
         slice_data = self.image_array[:, :, value]
         vtk_image = self.numpy_to_vtk_image(slice_data)
         self.display_image(vtk_image, self.vtkWidget_sagittal[1])
+        self.update_crosshairs()
 
     def numpy_to_vtk_image(self, image):
         # Convert NumPy array to VTK image
@@ -184,14 +190,19 @@ class CTViewer(QWidget):
             self.generate_and_display_model()
         else:
             self.display_placeholder_cube()
-            
+
         # Create crosshairs for the 3D view
         self.crosshair_lines_3d = self.create_3d_crosshair_lines(self.model_renderer)
 
-        # Add interaction callback for mouse dragging in the 3D view
+        # Add interaction callback for mouse dragging in the 3D view using CustomInteractorStyle
         interactor = self.model_vtkWidget.GetRenderWindow().GetInteractor()
-        interactor.AddObserver("LeftButtonPressEvent", self.on_mouse_drag)
-        interactor.AddObserver("MouseMoveEvent", self.on_mouse_drag)
+        custom_interactor_style = CustomInteractorStyle(parent=self)
+        interactor.SetInteractorStyle(custom_interactor_style)
+
+        # Initialize and start interaction for model_vtkWidget
+        self.model_vtkWidget.Initialize()
+        self.model_vtkWidget.Start()
+
         
     def on_mouse_drag(self, obj, event):
         # Get the mouse click position
@@ -275,19 +286,22 @@ class CTViewer(QWidget):
         # Check if crosshairs are visible
         if not self.crosshair_visible:
             return
+        
+        self.is_updating_crosshairs = True
 
         dims = self.dimensions  # (Depth, Height, Width)
         x = self.slice_indices[2]  # Sagittal index (Width)
         y = self.slice_indices[1]  # Coronal index (Height)
         z = self.slice_indices[0]  # Axial index (Depth)
 
-        # Update crosshairs in 3D model view
+        # Update 3D crosshairs
         self.crosshair_lines_3d[0][0].SetPoint1(x, 0, z)
-        self.crosshair_lines_3d[0][0].SetPoint2(x, dims[1] - 1, z)
+        self.crosshair_lines_3d[0][0].SetPoint2(x, dims[1], z)
         self.crosshair_lines_3d[1][0].SetPoint1(0, y, z)
-        self.crosshair_lines_3d[1][0].SetPoint2(dims[2] - 1, y, z)
+        self.crosshair_lines_3d[1][0].SetPoint2(dims[2], y, z)
         self.crosshair_lines_3d[2][0].SetPoint1(x, y, 0)
-        self.crosshair_lines_3d[2][0].SetPoint2(x, y, dims[0] - 1)
+        self.crosshair_lines_3d[2][0].SetPoint2(x, y, dims[0])
+
 
         # Update crosshairs in axial view
         self.crosshair_lines_axial[0][0].SetPoint1(x, 0, 0)
@@ -310,6 +324,8 @@ class CTViewer(QWidget):
         # Render updates for all views
         for vtk_widget in [self.vtkWidget_axial[1], self.vtkWidget_coronal[1], self.vtkWidget_sagittal[1], self.model_vtkWidget]:
             vtk_widget.GetRenderWindow().Render()
+        self.is_updating_crosshairs = False
+
     def generate_and_display_model(self):
         # Generate the 3D model
         poly_data = self.generate_3d_model()
@@ -422,3 +438,26 @@ class CTViewer(QWidget):
 
         # Call the base class close method
         super().close()
+        
+class CustomInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
+    def __init__(self, parent=None):
+        super().__init__()
+        self.parent = parent
+        self.AddObserver("LeftButtonPressEvent", self.left_button_press_event)
+        self.AddObserver("MouseMoveEvent", self.mouse_move_event)
+
+    def left_button_press_event(self, obj, event):
+        # Record the position where the user clicks (possibly selecting a crosshair)
+        self.click_pos = self.GetInteractor().GetEventPosition()
+        self.OnLeftButtonDown()
+        return
+
+    def mouse_move_event(self, obj, event):
+        # If the left button is pressed, update the crosshair
+        if self.GetInteractor().GetControlKey():  # Modify as needed to only move crosshair with control key
+            current_pos = self.GetInteractor().GetEventPosition()
+            # Update crosshair position based on delta from click_pos
+            # Call the appropriate crosshair update functions here
+            self.parent.update_crosshairs()
+        self.OnMouseMove()
+        return
