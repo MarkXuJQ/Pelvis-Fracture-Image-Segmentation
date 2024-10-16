@@ -286,45 +286,46 @@ class CTViewer(QWidget):
         # Check if crosshairs are visible
         if not self.crosshair_visible:
             return
-        
-        self.is_updating_crosshairs = True
-
+    
         dims = self.dimensions  # (Depth, Height, Width)
         x = self.slice_indices[2]  # Sagittal index (Width)
         y = self.slice_indices[1]  # Coronal index (Height)
         z = self.slice_indices[0]  # Axial index (Depth)
 
         # Update 3D crosshairs
-        self.crosshair_lines_3d[0][0].SetPoint1(x, 0, z)
-        self.crosshair_lines_3d[0][0].SetPoint2(x, dims[1], z)
-        self.crosshair_lines_3d[1][0].SetPoint1(0, y, z)
-        self.crosshair_lines_3d[1][0].SetPoint2(dims[2], y, z)
-        self.crosshair_lines_3d[2][0].SetPoint1(x, y, 0)
-        self.crosshair_lines_3d[2][0].SetPoint2(x, y, dims[0])
-
+        if self.crosshair_lines_3d:
+            self.crosshair_lines_3d[0][0].SetPoint1(x, 0, z)
+            self.crosshair_lines_3d[0][0].SetPoint2(x, dims[1], z)
+            self.crosshair_lines_3d[1][0].SetPoint1(0, y, z)
+            self.crosshair_lines_3d[1][0].SetPoint2(dims[2], y, z)
+            self.crosshair_lines_3d[2][0].SetPoint1(x, y, 0)
+            self.crosshair_lines_3d[2][0].SetPoint2(x, y, dims[0])
 
         # Update crosshairs in axial view
-        self.crosshair_lines_axial[0][0].SetPoint1(x, 0, 0)
-        self.crosshair_lines_axial[0][0].SetPoint2(x, dims[1], 0)
-        self.crosshair_lines_axial[1][0].SetPoint1(0, y, 0)
-        self.crosshair_lines_axial[1][0].SetPoint2(dims[2], y, 0)
+        if self.crosshair_lines_axial:
+            self.crosshair_lines_axial[0][0].SetPoint1(0, y, 0)
+            self.crosshair_lines_axial[0][0].SetPoint2(dims[2], y, 0)
+            self.crosshair_lines_axial[1][0].SetPoint1(x, 0, 0)
+            self.crosshair_lines_axial[1][0].SetPoint2(x, dims[1], 0)
 
         # Update crosshairs in coronal view
-        self.crosshair_lines_coronal[0][0].SetPoint1(0, y, z)
-        self.crosshair_lines_coronal[0][0].SetPoint2(dims[2] - 1, y, z)
-        self.crosshair_lines_coronal[1][0].SetPoint1(x, 0, z)
-        self.crosshair_lines_coronal[1][0].SetPoint2(x, dims[1] - 1, z)
+        if self.crosshair_lines_coronal:
+            self.crosshair_lines_coronal[0][0].SetPoint1(0, y, z)
+            self.crosshair_lines_coronal[0][0].SetPoint2(dims[2] - 1, y, z)
+            self.crosshair_lines_coronal[1][0].SetPoint1(x, 0, z)
+            self.crosshair_lines_coronal[1][0].SetPoint2(x, dims[1] - 1, z)
 
         # Update crosshairs in sagittal view
-        self.crosshair_lines_sagittal[0][0].SetPoint1(0, y, z)
-        self.crosshair_lines_sagittal[0][0].SetPoint2(dims[1] - 1, y, z)
-        self.crosshair_lines_sagittal[1][0].SetPoint1(x, 0, z)
-        self.crosshair_lines_sagittal[1][0].SetPoint2(x, dims[0] - 1, z)
+        if self.crosshair_lines_sagittal:
+            self.crosshair_lines_sagittal[0][0].SetPoint1(0, 0, z)
+            self.crosshair_lines_sagittal[0][0].SetPoint2(dims[1] - 1, y, z)
+            self.crosshair_lines_sagittal[1][0].SetPoint1(0, y, 0)
+            self.crosshair_lines_sagittal[1][0].SetPoint2(x, y, dims[0] - 1)
 
         # Render updates for all views
         for vtk_widget in [self.vtkWidget_axial[1], self.vtkWidget_coronal[1], self.vtkWidget_sagittal[1], self.model_vtkWidget]:
             vtk_widget.GetRenderWindow().Render()
-        self.is_updating_crosshairs = False
+
 
     def generate_and_display_model(self):
         # Generate the 3D model
