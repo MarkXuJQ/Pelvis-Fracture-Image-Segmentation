@@ -1,6 +1,8 @@
+from PyQt5 import uic
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox, QToolBar
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
+from patient_manage import PatientManageWindow
 import SimpleITK as sitk
 import os
 from settings_dialog import SettingsDialog
@@ -8,6 +10,7 @@ from settings_dialog import SettingsDialog
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        uic.loadUi("ui/main_window.ui", self)  # Load the UI from XML file
         self.setWindowTitle("Medical Image Viewer")
         self.setGeometry(100, 100, 1200, 800)
         self.viewer = None  # Will hold the current image viewer
@@ -59,8 +62,16 @@ class MainWindow(QMainWindow):
         toolbar.addAction(create_crosshairs_action)
         self.create_crosshairs_action = create_crosshairs_action
 
+        # Connect Patient Management button
+        self.sure.clicked.connect(self.open_patient_manage)
+
         # Status bar
         self.statusBar().showMessage('Ready')
+
+    def open_patient_manage(self):
+        # Create and show the Patient Management window
+        self.patient_manage_window = PatientManageWindow()
+        self.patient_manage_window.show()
 
     def open_image(self):
         # Open file dialog to select image
