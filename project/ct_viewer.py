@@ -242,15 +242,15 @@ class CTViewer(QWidget):
     def close(self):
         # Clean up VTK widgets
         if hasattr(self, 'vtkWidget_axial'):
-            self.vtkWidget_axial[0].Finalize()
+            self.vtkWidget_axial.Finalize()
             del self.vtkWidget_axial
             
         if hasattr(self, 'vtkWidget_coronal'):
-            self.vtkWidget_coronal[0].Finalize()
+            self.vtkWidget_coronal.Finalize()
             del self.vtkWidget_coronal
 
         if hasattr(self, 'vtkWidget_sagittal'):
-            self.vtkWidget_sagittal[0].Finalize()
+            self.vtkWidget_sagittal.Finalize()
             del self.vtkWidget_sagittal
 
         if hasattr(self, 'model_vtkWidget'):
