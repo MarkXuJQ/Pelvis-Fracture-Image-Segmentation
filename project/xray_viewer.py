@@ -18,6 +18,10 @@ class XRayViewer(QWidget):
         self.renderer = vtk.vtkRenderer()
         self.vtkWidget.GetRenderWindow().AddRenderer(self.renderer)
 
+        # Remove all function of the interactor
+        interactor = self.vtkWidget.GetRenderWindow().GetInteractor()
+        interactor.SetInteractorStyle(None)
+
         # Normalize and display image
         vtk_image = self.numpy_to_vtk_image(self.image_array)
         self.display_image(vtk_image)
@@ -33,6 +37,7 @@ class XRayViewer(QWidget):
 
     def numpy_to_vtk_image(self, image):
         # Handle possible multiple channels
+        print(image.ndim)
         if image.ndim == 3:
             if image.shape[2] == 2:
                 # Combine channels into one
@@ -46,6 +51,7 @@ class XRayViewer(QWidget):
         # Normalize image data
         normalized_image = self.normalize_image(image)
 
+
         # Convert to VTK image data
         vtk_data_array = vtk_np.numpy_to_vtk(
             num_array=normalized_image.ravel(),
@@ -55,6 +61,7 @@ class XRayViewer(QWidget):
         vtk_image = vtk.vtkImageData()
         vtk_image.SetDimensions(image.shape[1], image.shape[0], 1)
         vtk_image.GetPointData().SetScalars(vtk_data_array)
+
         return vtk_image
 
     def normalize_image(self, image_array):
@@ -63,16 +70,31 @@ class XRayViewer(QWidget):
         if max_val - min_val == 0:
             normalized = np.zeros(image_array.shape, dtype=np.uint8)
         else:
-            normalized = ((image_array - min_val) / (max_val - min_val) * 255).astype(np.uint8)
+            #Use gamma correction to apply normalization
+            gamma=0.25
+            normalized=np.power(image_array/np.max(image_array),gamma)*255
+            normalized=normalized.astype(np.uint8)
+
         return normalized
 
     def display_image(self, vtk_image):
         # Remove previous items
         self.renderer.RemoveAllViewProps()
 
+        # Create a flip filter to flip the image vertically
+        flip_filter = vtk.vtkImageFlip()
+        flip_filter.SetInputData(vtk_image)
+        flip_filter.SetFilteredAxes(1)  # 1 = Y-axis (上下翻转)
+
+        # Update the filter to apply the changes
+        flip_filter.Update()
+
+        # Use the flipped image for the actor
+        flipped_image = flip_filter.GetOutput()
+
         # Create image actor
         image_actor = vtk.vtkImageActor()
-        image_actor.SetInputData(vtk_image)
+        image_actor.SetInputData(flipped_image)
 
         # Adjust window/level if necessary
         image_actor.GetProperty().SetColorWindow(255)
