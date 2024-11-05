@@ -89,6 +89,9 @@ class MainWindow(QMainWindow):
                 # Display 2D image
                 image_array = sitk.GetArrayFromImage(self.image)
                 self.viewer = XRayViewer(image_array)
+                # Disable 3D model and crosshair actions
+                self.generate_model_action.setEnabled(False)
+                self.create_crosshairs_action.setEnabled(False)
             elif dimension == 3:
                 # Display 3D image
                 self.viewer = CTViewer(self.image, render_model=self.render_on_open)
