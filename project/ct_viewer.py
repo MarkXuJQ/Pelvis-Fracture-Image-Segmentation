@@ -11,6 +11,8 @@ import SimpleITK as sitk
 import numpy as np
 import vtk.util.numpy_support as vtk_np
 
+import vtk
+
 # VTK Imports
 from vtkmodules.vtkCommonDataModel import vtkImageData
 from vtkmodules.vtkInteractionWidgets import (
@@ -119,20 +121,35 @@ class CTViewer(QWidget):
         self.vtkWidget_sagittal = self.setup_reslice_view(self.vtkWidget_sagittal, 0) # Sagittal (X-axis)
 
     def sitk_to_vtk_image(self, sitk_image):
-        # For testing, create a synthetic image instead
-        image = vtkImageData()
-        image.SetDimensions(100, 100, 100)
-        image.AllocateScalars(VTK_UNSIGNED_CHAR, 1)
-
-        # Initialize with gradient values
-        dims = image.GetDimensions()
-        for z in range(dims[2]):
-            for y in range(dims[1]):
-                for x in range(dims[0]):
-                    pixel = (x + y + z) % 256
-                    image.SetScalarComponentFromDouble(x, y, z, 0, pixel)
-
-        return image
+        # Get the image dimensions
+        size = sitk_image.GetSize()  # (x_size, y_size, z_size)
+        spacing = sitk_image.GetSpacing()
+        origin = sitk_image.GetOrigin()
+        
+        # Convert SimpleITK image to a NumPy array
+        image_array = sitk.GetArrayFromImage(sitk_image)  # Shape: (z_size, y_size, x_size)
+        
+        # Ensure the data is in the correct format
+        image_array = image_array.astype(np.float32)
+        
+        # Transpose the array to (x_size, y_size, z_size)
+        image_array = np.transpose(image_array, (2, 1, 0))
+        
+        # Flatten the array in Fortran order (column-major)
+        flat_image_array = image_array.flatten(order='F')
+        
+        # Create vtkImageData object
+        vtk_image = vtkImageData()
+        vtk_image.SetDimensions(size)
+        vtk_image.SetSpacing(spacing)
+        vtk_image.SetOrigin(origin)
+        vtk_image.AllocateScalars(VTK_FLOAT, 1)
+        
+        # Copy the data into the VTK image
+        vtk_data_array = vtk.util.numpy_support.vtk_to_numpy(vtk_image.GetPointData().GetScalars())
+        vtk_data_array[:] = flat_image_array  # Copy the data
+        
+        return vtk_image
 
     def setup_reslice_view(self, placeholder_widget, orientation):
         # Create a QVTKRenderWindowInteractor
@@ -154,8 +171,9 @@ class CTViewer(QWidget):
         reslice_widget.SetRepresentation(reslice_representation)
 
         # Set the reslice cursor via the cursor algorithm
-        reslice_representation.GetResliceCursorActor().GetCursorAlgorithm().SetResliceCursor(self.reslice_cursor)
-        reslice_representation.GetResliceCursorActor().GetCursorAlgorithm().SetReslicePlaneNormal(orientation)
+        reslice_cursor_algorithm = reslice_representation.GetResliceCursorActor().GetCursorAlgorithm()
+        reslice_cursor_algorithm.SetResliceCursor(self.reslice_cursor)
+        reslice_cursor_algorithm.SetReslicePlaneNormal(orientation)
 
         # Configure the reslice representation
         scalar_range = self.image_data.GetScalarRange()
@@ -165,7 +183,40 @@ class CTViewer(QWidget):
         reslice_representation.GetReslice().SetInputData(self.image_data)
         reslice_representation.GetResliceCursor().SetImage(self.image_data)
 
-        # Enable the widget
+        # Adjust the crosshair line properties
+        reslice_cursor_actor = reslice_representation.GetResliceCursorActor()
+        axes = []
+        if orientation == 2:  # Axial (Z-axis)
+            axes = [0, 1]  # X and Y axes are visible
+        elif orientation == 1:  # Coronal (Y-axis)
+            axes = [0, 2]  # X and Z axes are visible
+        elif orientation == 0:  # Sagittal (X-axis)
+            axes = [1, 2]  # Y and Z axes are visible
+
+        for i in axes:
+            centerline_property = reslice_cursor_actor.GetCenterlineProperty(i)
+            centerline_property.SetLineWidth(3.0)
+            # Optional: Set color
+            # centerline_property.SetColor(1.0, 0.0, 0.0)  # Red
+
+        # Set the interactor style to vtkInteractorStyleImage
+        interactor_style = vtk.vtkInteractorStyleImage()
+        render_window_interactor.SetInteractorStyle(interactor_style)
+
+        # Disable panning and rotation by overriding interaction methods
+        interactor_style.OnPan = lambda *args: None
+        interactor_style.OnRotate = lambda *args: None
+        interactor_style.OnZoom = lambda *args: None
+        interactor_style.OnMouseWheelForward = lambda *args: None
+        interactor_style.OnMouseWheelBackward = lambda *args: None
+        interactor_style.OnLeftButtonDown = lambda *args: None
+        interactor_style.OnLeftButtonUp = lambda *args: None
+        interactor_style.OnMiddleButtonDown = lambda *args: None
+        interactor_style.OnMiddleButtonUp = lambda *args: None
+        interactor_style.OnRightButtonDown = lambda *args: None
+        interactor_style.OnRightButtonUp = lambda *args: None
+
+        # Initialize the widget
         reslice_widget.SetEnabled(1)
         reslice_widget.On()
 
@@ -173,10 +224,42 @@ class CTViewer(QWidget):
         self.reslice_widgets.append(reslice_widget)
         self.reslice_representations.append(reslice_representation)
 
+        # Reset the camera to fit the image
+        renderer.ResetCamera()
+
+        # Adjust the camera for the specific orientation
+        camera = renderer.GetActiveCamera()
+        center = self.image_data.GetCenter()
+        camera.SetFocalPoint(center)
+
+        if orientation == 2:  # Axial (Z-axis)
+            camera.SetPosition(center[0], center[1], center[2] + 1000)
+            camera.SetViewUp(0, -1, 0)
+        elif orientation == 1:  # Coronal (Y-axis)
+            camera.SetPosition(center[0], center[1] - 1000, center[2])
+            camera.SetViewUp(0, 0, 1)
+        elif orientation == 0:  # Sagittal (X-axis)
+            camera.SetPosition(center[0] - 1000, center[1], center[2])
+            camera.SetViewUp(0, 0, 1)
+
+        # Adjust the parallel scale to fill the window
+        dims = self.image_data.GetDimensions()
+        spacing = self.image_data.GetSpacing()
+        pixel_size = [dims[i] * spacing[i] for i in range(2)]
+        parallel_scale = max(pixel_size) / 2.0
+        camera.SetParallelScale(parallel_scale)
+
         # Initialize the interactor
         render_window_interactor.Initialize()
 
+        # Render the scene
+        render_window_interactor.Render()
+
         return render_window_interactor
+
+
+
+
 
     def synchronize_views(self):
         for reslice_widget in self.reslice_widgets:
@@ -275,23 +358,18 @@ class CTViewer(QWidget):
         # Call the base class close method
         super().closeEvent(event)
 
-# You can add your main application code here to test the CTViewer class
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    # Create a dummy SimpleITK image for testing
-    sitk_image = sitk.Image(100, 100, 100, sitk.sitkFloat32)
-    sitk_image.SetSpacing([1.0, 1.0, 1.0])
-    sitk_image.SetOrigin([0.0, 0.0, 0.0])
-
-    # Fill the image with gradient values
-    for z in range(100):
-        for y in range(100):
-            for x in range(100):
-                sitk_image[x, y, z] = (x + y + z) % 256
+    # Replace the synthetic image with reading an actual .mha file
+    # Specify the path to your .mha file
+    image_path = r'D:\pelvis-source\001.mha'
+    # Read the image using SimpleITK
+    sitk_image = sitk.ReadImage(image_path)
 
     # Create and show the CTViewer
     viewer = CTViewer(sitk_image)
     viewer.show()
 
     sys.exit(app.exec_())
+
