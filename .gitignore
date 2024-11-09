@@ -1,0 +1,16 @@
+# Ignore dataset folder
+/ct_seg/data/
+
+# Ignore log files
+*.log
+
+# Ignore any temporary files
+*.tmp
+*.bak
+
+# Ignore any compiled files
+*.pyc
+
+# Ignore model checkpoints and outputs (if applicable)
+/outputs/
+/ct_seg/models/
