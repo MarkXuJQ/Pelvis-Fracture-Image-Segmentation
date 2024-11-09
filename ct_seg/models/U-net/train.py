@@ -1,74 +1,96 @@
+# train.py
 import os
 import torch
-import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from unet_model import UNet
+import torch.nn as nn
+from torch.utils.data import DataLoader, random_split
+import torchvision.transforms as T
 from dataset import CTScanDataset
-import SimpleITK as sitk
+from unet_model import UNet3D  # Import your custom UNet3D model
+from torch.cuda.amp import autocast, GradScaler  # For mixed-precision training
 
-# Set device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# Paths
+images_path_part1 = '../../data/PENGWIN_CT_train_images_part1'
+images_path_part2 = '../../data/PENGWIN_CT_train_images_part2'
+labels_path = '../../data/PENGWIN_CT_train_labels'
+model_dir = './model_checkpoints'
 
-# Define paths
-data_dir = '../../data'  # Adjust this path if necessary
-model_dir = '.'  # Set to the current folder to save model checkpoints
-output_dir = '../../outputs'
-
-# Hyperparameters
-learning_rate = 1e-4
-num_epochs = 50
-batch_size = 4
-
-train_transform = transforms.Compose([
-    transforms.Resize((256, 256)),  # Resize all images to 256x256
-    transforms.ToTensor(),  # Convert NumPy array to tensor
-    transforms.Normalize((0.5,), (0.5,))  # Normalize with mean and std
+# Dataset and DataLoader
+transform = T.Compose([
+    T.Normalize([0.5], [0.5])
 ])
+dataset = CTScanDataset(images_path_part1, images_path_part2, labels_path, transform=transform)
 
-train_dataset = CTScanDataset(
-    os.path.join(data_dir, 'PENGWIN_CT_train_images_part1'),
-    os.path.join(data_dir, 'PENGWIN_CT_train_images_part2'),
-    os.path.join(data_dir, 'PENGWIN_CT_train_labels'),
-    transform=train_transform
-)
+# Train-validation split (80-20 split)
+train_size = int(0.8 * len(dataset))
+val_size = len(dataset) - train_size
+target_shape = (1, 512, 512, 512)  # Define a uniform shape for all images and labels
+train_dataset = CTScanDataset(images_path_part1, images_path_part2, labels_path, transform=transform, target_shape=target_shape)
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
 # Model
-model = UNet(in_channels=1, out_channels=1).to(device)
+model = UNet3D(in_channels=1, out_channels=1)  # Using your custom UNet3D model
 
-# Loss and Optimizer
+# Loss, Optimizer, and Scheduler
 criterion = nn.BCEWithLogitsLoss()
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5, verbose=True)
 
-# Training loop
+# Mixed-precision training setup
+scaler = GradScaler()  # Mixed precision scaling
+
+# Training and validation loop
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model.to(device)
+
+num_epochs = 10
+best_val_loss = float('inf')
+
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
+    
+    # Training loop
     for i, (images, masks) in enumerate(train_loader):
         images, masks = images.to(device), masks.to(device)
-
-        # Forward pass
-        outputs = model(images)
-        loss = criterion(outputs, masks)
-
-        # Backward pass and optimization
+        
+        # Forward and backward pass with mixed precision
+        with autocast():
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+        
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+        
         running_loss += loss.item()
-
-        if (i + 1) % 10 == 0:
+        if (i + 1) % 5 == 0:
             print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {loss.item():.4f}')
+    
+    # Validation loop
+    model.eval()
+    val_loss = 0.0
+    with torch.no_grad():
+        for images, masks in val_loader:
+            images, masks = images.to(device), masks.to(device)
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+            val_loss += loss.item()
+    
+    val_loss /= len(val_loader)
+    print(f'Epoch [{epoch+1}/{num_epochs}] Training Loss: {running_loss/len(train_loader):.4f}, Validation Loss: {val_loss:.4f}')
+    
+    # Adjust learning rate based on validation loss
+    scheduler.step(val_loss)
+    
+    # Save model checkpoint if validation loss improves
+    if val_loss < best_val_loss:
+        best_val_loss = val_loss
+        os.makedirs(model_dir, exist_ok=True)
+        torch.save(model.state_dict(), os.path.join(model_dir, f'best_unet_model.pth'))
+        print(f'Saved improved model at epoch {epoch+1} with validation loss: {val_loss:.4f}')
 
-    # Save model checkpoint
-    torch.save(model.state_dict(), os.path.join(model_dir, f'unet_epoch_{epoch+1}.pth'))
-    print(f'Epoch [{epoch+1}/{num_epochs}] completed with average loss: {running_loss/len(train_loader):.4f}')
-
-print('Training finished.')
-
-# Save final model
-torch.save(model.state_dict(), os.path.join(model_dir, 'unet_final.pth'))
+print('Training complete. Best validation loss:', best_val_loss)

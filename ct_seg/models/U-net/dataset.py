@@ -1,82 +1,60 @@
-import torch
-import numpy as np
-import SimpleITK as sitk
-from torch.utils.data import Dataset
-import torchvision.transforms.functional as TF
+# dataset.py
 import os
+import SimpleITK as sitk
+import torch
+from torch.utils.data import Dataset
+import numpy as np
+import torchvision.transforms as T
 
 class CTScanDataset(Dataset):
-    def __init__(self, images_path1, images_path2, labels_path, transform=None):
-        self.images_paths = [
-            *[os.path.join(images_path1, fname) for fname in os.listdir(images_path1)],
-            *[os.path.join(images_path2, fname) for fname in os.listdir(images_path2)]
-        ]
-        self.labels_paths = [os.path.join(labels_path, fname) for fname in os.listdir(labels_path)]
+    def __init__(self, images_path1, images_path2, labels_path, transform=None, target_shape=(1, 512, 512, 512)):
+        self.image_paths = (
+            [os.path.join(images_path1, fname) for fname in os.listdir(images_path1)] +
+            [os.path.join(images_path2, fname) for fname in os.listdir(images_path2)]
+        )
+        self.label_paths = [os.path.join(labels_path, fname) for fname in os.listdir(labels_path)]
+        
+        self.image_paths.sort()
+        self.label_paths.sort()
+
+        assert len(self.image_paths) == len(self.label_paths), "Number of images and labels must match."
+
         self.transform = transform
-
-        # Sorting paths
-        self.images_paths.sort()
-        self.labels_paths.sort()
-
-        # Ensure number of images and labels are the same
-        assert len(self.images_paths) == len(self.labels_paths), "Mismatch between image and label counts."
+        self.target_shape = target_shape  # Desired shape after padding
 
     def __len__(self):
-        return len(self.images_paths)
+        return len(self.image_paths)
+
+    def pad_to_shape(self, img, target_shape):
+        # Calculate padding sizes
+        padding = [(0, max(0, ts - s)) for s, ts in zip(img.shape, target_shape)]
+        # Apply padding
+        return np.pad(img, padding, mode='constant', constant_values=0)
 
     def __getitem__(self, idx):
         # Load image and label using SimpleITK
-        image = sitk.GetArrayFromImage(sitk.ReadImage(self.images_paths[idx]))
-        label = sitk.GetArrayFromImage(sitk.ReadImage(self.labels_paths[idx]))
+        image = sitk.ReadImage(self.image_paths[idx])
+        label = sitk.ReadImage(self.label_paths[idx])
 
-        # Resize depth to a fixed number (e.g., 256)
-        target_depth = 256
-        image = self.resize_depth(image, target_depth)
-        label = self.resize_depth(label, target_depth)
+        # Convert to numpy arrays
+        image = sitk.GetArrayFromImage(image).astype(np.float32)
+        label = sitk.GetArrayFromImage(label).astype(np.float32)
 
-        # Convert to float32 and normalize to [0, 1]
-        image = image.astype(np.float32) / 255.0
-        label = label.astype(np.float32)
-
-        # Add channel dimension (1, D, H, W)
+        # Add channel dimension
         image = np.expand_dims(image, axis=0)
         label = np.expand_dims(label, axis=0)
 
-        # Convert to tensor
-        image = torch.from_numpy(image)
-        label = torch.from_numpy(label)
+        # Pad to target shape
+        image = self.pad_to_shape(image, self.target_shape)
+        label = self.pad_to_shape(label, self.target_shape)
 
-        # Apply transformation if provided
+        # Convert to tensors
+        image = torch.tensor(image)
+        label = torch.tensor(label)
+
+        # Apply transformations if specified
         if self.transform:
             image = self.transform(image)
-            label = TF.resize(label, image.shape[1:])  # Resize label to match image
+            label = self.transform(label)
 
         return image, label
-
-    def resize_depth(self, volume, target_depth):
-        """Resize the depth of a 3D volume."""
-        current_depth = volume.shape[0]
-        if current_depth == target_depth:
-            return volume
-
-        # Using SimpleITK to resize along depth
-        sitk_volume = sitk.GetImageFromArray(volume)
-        original_spacing = sitk_volume.GetSpacing()
-        original_size = sitk_volume.GetSize()
-
-        # Compute new spacing
-        new_size = list(original_size)
-        new_size[2] = target_depth
-        new_spacing = (
-            original_spacing[0],
-            original_spacing[1],
-            original_spacing[2] * (original_size[2] / target_depth),
-        )
-
-        resampler = sitk.ResampleImageFilter()
-        resampler.SetOutputSpacing(new_spacing)
-        resampler.SetSize(new_size)
-        resampler.SetInterpolator(sitk.sitkLinear)
-
-        resized_volume = resampler.Execute(sitk_volume)
-        return sitk.GetArrayFromImage(resized_volume)

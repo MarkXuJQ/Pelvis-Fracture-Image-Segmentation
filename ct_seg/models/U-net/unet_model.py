@@ -7,29 +7,29 @@ from torchvision import transforms
 from dataset import CTScanDataset
 import SimpleITK as sitk
 
-# Define the UNet model
-class UNet(nn.Module):
+# Define the 3D UNet model
+class UNet3D(nn.Module):
     def __init__(self, in_channels, out_channels):
-        super(UNet, self).__init__()
+        super(UNet3D, self).__init__()
         
         def conv_block(in_ch, out_ch):
             block = nn.Sequential(
-                nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+                nn.Conv3d(in_ch, out_ch, kernel_size=3, padding=1),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
+                nn.Conv3d(out_ch, out_ch, kernel_size=3, padding=1),
                 nn.ReLU(inplace=True)
             )
             return block
         
         def up_conv(in_ch, out_ch):
-            return nn.ConvTranspose2d(in_ch, out_ch, kernel_size=2, stride=2)
+            return nn.ConvTranspose3d(in_ch, out_ch, kernel_size=2, stride=2)
         
         self.encoder1 = conv_block(in_channels, 64)
         self.encoder2 = conv_block(64, 128)
         self.encoder3 = conv_block(128, 256)
         self.encoder4 = conv_block(256, 512)
         
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pool = nn.MaxPool3d(kernel_size=2, stride=2)
         
         self.bottleneck = conv_block(512, 1024)
         
@@ -42,7 +42,7 @@ class UNet(nn.Module):
         self.upconv1 = up_conv(128, 64)
         self.decoder1 = conv_block(128, 64)
         
-        self.output = nn.Conv2d(64, out_channels, kernel_size=1)
+        self.output = nn.Conv3d(64, out_channels, kernel_size=1)
     
     def forward(self, x):
         # Encoder
@@ -84,10 +84,11 @@ output_dir = '../../outputs'
 # Hyperparameters
 learning_rate = 1e-4
 num_epochs = 50
-batch_size = 4
+batch_size = 2
 
 # Dataset and DataLoader
 train_transform = transforms.Compose([
+    transforms.Lambda(lambda x: torch.tensor(x, dtype=torch.float32)),
     transforms.Normalize((0.5,), (0.5,))
 ])
 
@@ -101,7 +102,7 @@ train_dataset = CTScanDataset(
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
 # Model
-model = UNet(in_channels=1, out_channels=1).to(device)
+model = UNet3D(in_channels=1, out_channels=1).to(device)
 
 # Loss and Optimizer
 criterion = nn.BCEWithLogitsLoss()
