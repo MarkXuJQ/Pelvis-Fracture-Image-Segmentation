@@ -12,5 +12,4 @@
 *.pyc
 
 # Ignore model checkpoints and outputs (if applicable)
-/outputs/
-/ct_seg/models/
+/ct_seg/outputs/

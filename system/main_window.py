@@ -10,7 +10,7 @@ from settings_dialog import SettingsDialog
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        uic.loadUi("system/ui/main_window.ui", self)  # Load the UI from XML file
+        uic.loadUi(r"system\ui\main_window.ui", self)  # Load the UI from XML file
         self.setWindowTitle("Medical Image Viewer")
         self.setGeometry(100, 100, 1200, 800)
         self.viewer = None  # Will hold the current image viewer
