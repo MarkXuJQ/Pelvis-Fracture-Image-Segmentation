@@ -1,4 +1,3 @@
-
 # CT Segmentation Project
 
 This repository contains the setup for a pelvis CT segmentation project using deep learning models such as U-Net and its variants. The project aims to provide an effective framework for medical image segmentation, utilizing a well-organized folder structure for data, models, and results.
@@ -7,16 +6,21 @@ This repository contains the setup for a pelvis CT segmentation project using de
 
 ```
 ct_seg/
-|
-├── data/             # Folder containing CT scan data and labels.
-|
-├── models/           # Folder for storing different trained models.
-|
-├── outputs/          # Folder for storing output results such as predictions and evaluation metrics.
-|
+│
+├── data/             # Contains CT scan data and corresponding labels.
+│   ├── PENGWIN_CT_train_images/   # Folder with training images for CT segmentation.combined part 1 2. 
+│   ├── PENGWIN_CT_train_labels/   # Folder with labels for the training images.
+│
+├── models/           # Directory for different trained models, including their outputs.
+│   ├── U-net/                  # Folder containing the U-Net model, checkpoints, and outputs.
+│   │   ├── checkpoints/        # Checkpoints for the U-Net model to save training progress.
+│   │   ├── predictions/        # Predicted segmentation outputs by the U-Net model on test data.
+│   │   ├── metrics/            # Evaluation results for the U-Net model, such as accuracy and IoU.
+│
 ├── README.md         # Documentation for the project.
-|
+│
 ├── requirements.txt  # List of Python dependencies for the project.
+
 ```
 
 ## Getting Started

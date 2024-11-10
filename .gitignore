@@ -7,6 +7,7 @@
 # Ignore any temporary files
 *.tmp
 *.bak
+*.pth
 
 # Ignore any compiled files
 *.pyc
