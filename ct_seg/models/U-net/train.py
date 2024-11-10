@@ -10,8 +10,7 @@ from unet_model import UNet3D  # Import your custom UNet3D model
 from torch.cuda.amp import autocast, GradScaler  # For mixed-precision training
 
 # Paths
-images_path_part1 = '../../data/PENGWIN_CT_train_images_part1'
-images_path_part2 = '../../data/PENGWIN_CT_train_images_part2'
+images_path = '../../data/PENGWIN_CT_train_images'  # Combined image directory
 labels_path = '../../data/PENGWIN_CT_train_labels'
 model_dir = './model_checkpoints'
 
@@ -19,12 +18,13 @@ model_dir = './model_checkpoints'
 transform = T.Compose([
     T.Normalize([0.5], [0.5])
 ])
-dataset = CTScanDataset(images_path_part1, images_path_part2, labels_path, transform=transform)
+dataset = CTScanDataset(images_path, labels_path, transform=transform)  # Use single image path
+train_loader = DataLoader(dataset, batch_size=2, shuffle=True)
 
 # Train-validation split (80-20 split)
 train_size = int(0.8 * len(dataset))
 val_size = len(dataset) - train_size
-target_shape = (1, 512, 512, 512)  # Define a uniform shape for all images and labels
+target_shape = (1, 64, 128, 128)  # Define a uniform shape for all images and labels
 train_dataset = CTScanDataset(images_path_part1, images_path_part2, labels_path, transform=transform, target_shape=target_shape)
 
 train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)

@@ -76,30 +76,31 @@ class UNet3D(nn.Module):
 # Set device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Define paths
-data_dir = '../../data'  # Adjust this path if necessary
-model_dir = '.'  # Set to the current folder to save model checkpoints
-output_dir = '../../outputs'
+# Paths
+data_dir = '../../data'
+images_path = os.path.join(data_dir, 'PENGWIN_CT_train_images')  # Combined image directory
+labels_path = os.path.join(data_dir, 'PENGWIN_CT_train_labels')
+model_dir = '.'  # Path to save model checkpoints
 
-# Hyperparameters
-learning_rate = 1e-4
-num_epochs = 50
-batch_size = 2
-
-# Dataset and DataLoader
+# Transformations
 train_transform = transforms.Compose([
     transforms.Lambda(lambda x: torch.tensor(x, dtype=torch.float32)),
     transforms.Normalize((0.5,), (0.5,))
 ])
 
+# Dataset and DataLoader
 train_dataset = CTScanDataset(
-    os.path.join(data_dir, 'PENGWIN_CT_train_images_part1'),
-    os.path.join(data_dir, 'PENGWIN_CT_train_images_part2'),
-    os.path.join(data_dir, 'PENGWIN_CT_train_labels'),
+    images_path,  # Use single path for images
+    labels_path,
     transform=train_transform
 )
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
+
+# Hyperparameters
+learning_rate = 0.001  # Define the learning rate
+num_epochs = 50
+batch_size = 2
 
 # Model
 model = UNet3D(in_channels=1, out_channels=1).to(device)
@@ -108,12 +109,23 @@ model = UNet3D(in_channels=1, out_channels=1).to(device)
 criterion = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
+best_loss = float('inf')  # Initialize best loss for model checkpointing
+
 # Training loop
 for epoch in range(num_epochs):
     model.train()
-    running_loss = 0.0
+    running_loss = 0.0  # Reset running loss at the start of each epoch
+
     for i, (images, masks) in enumerate(train_loader):
-        images, masks = images.to(device), masks.to(device)
+        # Convert to float32 and send to the correct device
+        images = images.float().to(device)
+        masks = masks.float().to(device)
+
+        # Diagnostic print statements
+        print("Image shape:", images.shape, "Mask shape:", masks.shape)
+        print("Image device:", images.device, "Mask device:", masks.device)
+        print("Image values (sample):", images[0, 0, :5, :5, :5])
+        print("Mask values (sample):", masks[0, 0, :5, :5, :5])
 
         # Forward pass
         outputs = model(images)
@@ -126,14 +138,19 @@ for epoch in range(num_epochs):
 
         running_loss += loss.item()
 
-        if (i + 1) % 10 == 0:
+        if (i + 1) % 10 == 0:  # Print every 10 steps for better tracking
             print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {loss.item():.4f}')
 
-    # Save model checkpoint
-    torch.save(model.state_dict(), os.path.join(model_dir, f'unet_epoch_{epoch+1}.pth'))
-    print(f'Epoch [{epoch+1}/{num_epochs}] completed with average loss: {running_loss/len(train_loader):.4f}')
+    # Calculate average loss for the epoch
+    avg_loss = running_loss / len(train_loader)
+    print(f'Epoch [{epoch+1}/{num_epochs}] completed with average loss: {avg_loss:.4f}')
+
+    # Save checkpoint if average loss improves
+    if avg_loss < best_loss:
+        best_loss = avg_loss
+        torch.save(model.state_dict(), os.path.join(model_dir, 'best_unet_model.pth'))
+        print(f'Saved improved model with average loss: {avg_loss:.4f}')
+
 
 print('Training finished.')
 
-# Save final model
-torch.save(model.state_dict(), os.path.join(model_dir, 'unet_final.pth'))
