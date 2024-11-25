@@ -14,3 +14,4 @@
 
 # Ignore model checkpoints and outputs (if applicable)
 /ct_seg/outputs/
+/ct_seg/models/chatgptPrompts.md
