@@ -173,7 +173,19 @@ class CTViewer(QWidget):
             reslice_widget.AddObserver("EndInteractionEvent", self.on_interaction)
 
     def on_interaction(self, caller, event):
-        # Callback function to update all reslice widgets on interaction
+        # Get current cursor position
+        center = self.reslice_cursor.GetCenter()
+        dims = self.image_data.GetDimensions()
+        
+        # Update slider positions based on cursor position
+        # For axial view
+        self.axial_slider.setValue(int(center[2]/self.image_data.GetSpacing()[2]) - dims[2]//2)
+        
+        # For coronal and sagittal views (using negative mapping)
+        self.coronal_slider.setValue(-int(center[1]/self.image_data.GetSpacing()[1]))
+        self.sagittal_slider.setValue(-int(center[0]/self.image_data.GetSpacing()[0]))
+        
+        # Update all views
         for reslice_widget in self.reslice_widgets:
             if reslice_widget != caller:
                 reslice_widget.Render()
