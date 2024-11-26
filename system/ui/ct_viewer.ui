@@ -13,95 +13,101 @@
   <property name="windowTitle">
    <string>CT Viewer</string>
   </property>
-
-  <!-- Grid Layout for the axial, coronal, sagittal, and 3D view -->
   <layout class="QGridLayout" name="gridLayout">
-   <!-- Axial View -->
    <item row="0" column="0">
-    <layout class="QVBoxLayout" name="axialLayout">
-     <item>
-      <widget class="QLabel" name="axialLabel">
-       <property name="text">
-        <string>Axial View</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="vtkWidget_axial"/> <!-- Placeholder -->
-     </item>
-     <item>
-      <widget class="QSlider" name="slider_axial">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-    </layout>
+    <widget class="QWidget" name="axialContainer" native="true">
+     <layout class="QVBoxLayout" name="axialLayout">
+      <item>
+       <widget class="QLabel" name="axialLabel">
+        <property name="text">
+         <string>Axial View</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QVTKRenderWindowInteractor" name="vtkWidget_axial"/>
+      </item>
+      <item>
+       <widget class="QSlider" name="axial_slider">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
    </item>
-
-   <!-- Coronal View -->
-   <item row="1" column="0">
-    <layout class="QVBoxLayout" name="coronalLayout">
-     <item>
-      <widget class="QLabel" name="coronalLabel">
-       <property name="text">
-        <string>Coronal View</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="vtkWidget_coronal"/> <!-- Placeholder -->
-     </item>
-     <item>
-      <widget class="QSlider" name="slider_coronal">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-
-   <!-- Sagittal View -->
-   <item row="1" column="1">
-    <layout class="QVBoxLayout" name="sagittalLayout">
-     <item>
-      <widget class="QLabel" name="sagittalLabel">
-       <property name="text">
-        <string>Sagittal View</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="vtkWidget_sagittal"/> <!-- Placeholder -->
-     </item>
-     <item>
-      <widget class="QSlider" name="slider_sagittal">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-
-   <!-- 3D Model -->
    <item row="0" column="1">
-    <layout class="QVBoxLayout" name="modelLayout">
-     <item>
-      <widget class="QLabel" name="modelLabel">
-       <property name="text">
-        <string>3D Model</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="model_vtkWidget"/> <!-- Placeholder -->
-     </item>
-    </layout>
+    <widget class="QWidget" name="modelContainer" native="true">
+     <layout class="QVBoxLayout" name="modelLayout">
+      <item>
+       <widget class="QLabel" name="modelLabel">
+        <property name="text">
+         <string>3D Model</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QVTKRenderWindowInteractor" name="model_vtkWidget"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="1" column="0">
+    <widget class="QWidget" name="coronalContainer" native="true">
+     <layout class="QVBoxLayout" name="coronalLayout">
+      <item>
+       <widget class="QLabel" name="coronalLabel">
+        <property name="text">
+         <string>Coronal View</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QVTKRenderWindowInteractor" name="vtkWidget_coronal"/>
+      </item>
+      <item>
+       <widget class="QSlider" name="coronal_slider">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QWidget" name="sagittalContainer" native="true">
+     <layout class="QVBoxLayout" name="sagittalLayout">
+      <item>
+       <widget class="QLabel" name="sagittalLabel">
+        <property name="text">
+         <string>Sagittal View</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QVTKRenderWindowInteractor" name="vtkWidget_sagittal"/>
+      </item>
+      <item>
+       <widget class="QSlider" name="sagittal_slider">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QVTKRenderWindowInteractor</class>
+   <extends>QWidget</extends>
+   <header>vtk.qt.QVTKRenderWindowInteractor</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

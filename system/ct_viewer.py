@@ -1,5 +1,6 @@
 import sys
 import os
+from PyQt5 import uic
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import SimpleITK as sitk
@@ -21,54 +22,37 @@ os.environ["QT_MAC_WANTS_LAYER"] = "1"
 class CTViewer(QWidget):
     def __init__(self, sitk_image, render_model=False):
         super().__init__()
-        self.sitk_image = sitk_image  # SimpleITK image to visualize
-        self.render_model = render_model  # Boolean to indicate if 3D model rendering is required
-        self.image_data = self.sitk_to_vtk_image(sitk_image)  # Convert SimpleITK image to VTK image
-        self.reslice_cursor = vtkResliceCursor()  # Create a reslice cursor for slice views
-        self.reslice_cursor.SetCenter(self.image_data.GetCenter())  # Set the cursor to the image center
+        self.sitk_image = sitk_image
+        self.render_model = render_model
+        self.image_data = self.sitk_to_vtk_image(sitk_image)
+        self.reslice_cursor = vtkResliceCursor()
+        self.reslice_cursor.SetCenter(self.image_data.GetCenter())
         self.reslice_cursor.SetImage(self.image_data)
-        self.reslice_cursor.SetThickMode(False)  # Disable thick mode for thinner slices
-        self.reslice_widgets = []  # List to store reslice widgets for each view
-        self.reslice_representations = []  # List to store representations for reslice widgets
-        self.init_ui()  # Initialize the user interface layout
-        self.setup_reslice_views()  # Set up the slice views (axial, coronal, sagittal)
-        self.synchronize_views()  # Add interactivity to keep views in sync
-        self.setup_model_view()  # Prepare 3D model view (if render_model is True)
+        self.reslice_cursor.SetThickMode(False)
+        self.reslice_widgets = []
+        self.reslice_representations = []
+        
+        # Load the UI file instead of programmatic layout
+        uic.loadUi('system/ui/ct_viewer.ui', self)
+        
+        # Setup views using the widgets from UI file
+        self.setup_reslice_views()
+        self.synchronize_views()
+        self.setup_model_view()
         if self.render_model:
-            self.generate_and_display_model()  # Generate and display 3D model if specified
-
-    def init_ui(self):
-        # Set up main layout with slice views and 3D model view
-        main_layout = QVBoxLayout(self)
-        reslice_layout = QHBoxLayout()
-        
-        # Define widgets for axial, coronal, and sagittal views
-        self.vtkWidget_axial = QWidget()
-        self.vtkWidget_coronal = QWidget()
-        self.vtkWidget_sagittal = QWidget()
-        
-        # Set minimum sizes for the views
-        self.vtkWidget_axial.setMinimumSize(200, 200)
-        self.vtkWidget_coronal.setMinimumSize(200, 200)
-        self.vtkWidget_sagittal.setMinimumSize(200, 200)
-        
-        # Add views to the layout
-        reslice_layout.addWidget(self.vtkWidget_axial)
-        reslice_layout.addWidget(self.vtkWidget_coronal)
-        reslice_layout.addWidget(self.vtkWidget_sagittal)
-        main_layout.addLayout(reslice_layout)
-
-        # Define and add the 3D model view
-        self.model_vtkWidget = QWidget()
-        self.model_vtkWidget.setMinimumSize(600, 400)
-        main_layout.addWidget(self.model_vtkWidget)
-        self.setLayout(main_layout)
+            self.generate_and_display_model()
 
     def setup_reslice_views(self):
-        # Set up individual reslice views (axial, coronal, sagittal)
-        self.vtkWidget_axial = self.setup_reslice_view(self.vtkWidget_axial, 2)
-        self.vtkWidget_coronal = self.setup_reslice_view(self.vtkWidget_coronal, 1)
-        self.vtkWidget_sagittal = self.setup_reslice_view(self.vtkWidget_sagittal, 0)
+    # Initialize VTK widgets
+        self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_axial').Initialize()
+        self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_coronal').Initialize()
+        self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_sagittal').Initialize()
+        
+        # Setup using the widgets from UI file
+        self.vtkWidget_axial = self.setup_reslice_view(self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_axial'), 2)
+        self.vtkWidget_coronal = self.setup_reslice_view(self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_coronal'), 1)
+        self.vtkWidget_sagittal = self.setup_reslice_view(self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_sagittal'), 0)
+
 
     def sitk_to_vtk_image(self, sitk_image):
         # Convert SimpleITK image to VTK image
@@ -87,24 +71,18 @@ class CTViewer(QWidget):
         return vtk_image
 
     def setup_reslice_view(self, placeholder_widget, orientation):
-        # Setup for each individual reslice view
-        render_window_interactor = QVTKRenderWindowInteractor(placeholder_widget)
-        layout = QVBoxLayout(placeholder_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(render_window_interactor)
-        
         # Create and configure renderer for the view
         renderer = vtkRenderer()
-        render_window_interactor.GetRenderWindow().AddRenderer(renderer)
+        placeholder_widget.GetRenderWindow().AddRenderer(renderer)
         
         # Configure the reslice cursor representation and widget
         reslice_representation = vtkResliceCursorLineRepresentation()
         reslice_widget = vtkResliceCursorWidget()
-        reslice_widget.SetInteractor(render_window_interactor)
+        reslice_widget.SetInteractor(placeholder_widget)  
         reslice_widget.SetRepresentation(reslice_representation)
         reslice_representation.GetResliceCursorActor().GetCursorAlgorithm().SetResliceCursor(self.reslice_cursor)
         reslice_representation.GetResliceCursorActor().GetCursorAlgorithm().SetReslicePlaneNormal(orientation)
-        
+    
         # Set window/level for the reslice representation
         scalar_range = self.image_data.GetScalarRange()
         reslice_representation.SetWindowLevel(scalar_range[1] - scalar_range[0], (scalar_range[1] + scalar_range[0]) / 2)
@@ -135,10 +113,7 @@ class CTViewer(QWidget):
             camera.SetViewUp(0, 0, 1)
         camera.SetParallelScale(max([dim * spc for dim, spc in zip(self.image_data.GetDimensions(), self.image_data.GetSpacing())]) / 2.0)
         
-        # Initialize and render the interactor
-        render_window_interactor.Initialize()
-        render_window_interactor.Render()
-        return render_window_interactor
+        return placeholder_widget
 
     def synchronize_views(self):
         # Sync views so that interaction in one updates others
@@ -153,17 +128,12 @@ class CTViewer(QWidget):
                 reslice_widget.Render()
 
     def setup_model_view(self):
-        # Set up the layout and renderer for the 3D model view
-        render_window_interactor = QVTKRenderWindowInteractor(self.model_vtkWidget)
-        layout = QVBoxLayout(self.model_vtkWidget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(render_window_interactor)
-        
+        # Use the model widget from UI file
+        self.model_vtkWidget = self.findChild(QVTKRenderWindowInteractor, 'model_vtkWidget')
         self.model_renderer = vtkRenderer()
-        render_window = render_window_interactor.GetRenderWindow()
+        render_window = self.model_vtkWidget.GetRenderWindow()
         render_window.AddRenderer(self.model_renderer)
-        render_window_interactor.Initialize()
-        self.model_vtkWidget = render_window_interactor
+        self.model_vtkWidget.Initialize()
 
     def generate_and_display_model(self):
         # Generate a 3D model from the image data and display it
