@@ -1,7 +1,7 @@
 import sys
 import os
 from PyQt5 import uic
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import SimpleITK as sitk
 import numpy as np
@@ -34,6 +34,8 @@ class CTViewer(QWidget):
         
         # Load the UI file instead of programmatic layout
         uic.loadUi('system/ui/ct_viewer.ui', self)
+        
+        self.setup_sliders()
         
         # Setup views using the widgets from UI file
         self.setup_reslice_views()
@@ -69,6 +71,54 @@ class CTViewer(QWidget):
         vtk_data_array = vtk.util.numpy_support.vtk_to_numpy(vtk_image.GetPointData().GetScalars())
         vtk_data_array[:] = image_array  # Assign pixel data to VTK image
         return vtk_image
+    
+    def setup_sliders(self):
+        # Get sliders from UI
+        self.axial_slider = self.findChild(QSlider, 'axial_slider')
+        self.coronal_slider = self.findChild(QSlider, 'coronal_slider')
+        self.sagittal_slider = self.findChild(QSlider, 'sagittal_slider')
+        
+        # Debug print to verify sliders are found
+        if not all([self.axial_slider, self.coronal_slider, self.sagittal_slider]):
+            print("Warning: Not all sliders were found in the UI")
+            return
+        
+        # Get image dimensions and center positions
+        dims = self.image_data.GetDimensions()
+        spacing = self.image_data.GetSpacing()
+        
+        # This allows navigation to both sides of the center
+        self.axial_slider.setRange(-dims[2]//2, dims[2]//2)
+        self.coronal_slider.setRange(-dims[1]//2, dims[1]//2)
+        self.sagittal_slider.setRange(-dims[0]//2, dims[0]//2)
+        
+        # Set initial values to center (0)
+        self.axial_slider.setValue(0)
+        self.coronal_slider.setValue(0)
+        self.sagittal_slider.setValue(0)
+        
+        # Connect slider value changes to update functions with offset calculation
+        self.axial_slider.valueChanged.connect(
+            lambda value: self.update_slice_position(2, value + dims[2]//2))
+        self.coronal_slider.valueChanged.connect(
+            lambda value: self.update_slice_position(1, -value))
+        self.sagittal_slider.valueChanged.connect(
+            lambda value: self.update_slice_position(0, -value))
+
+    def update_slice_position(self, orientation, value):
+        center = list(self.reslice_cursor.GetCenter())
+        dims = self.image_data.GetDimensions()
+        spacing = self.image_data.GetSpacing()
+        
+        # Calculate physical position based on image spacing
+        physical_pos = value * spacing[orientation]
+        center[orientation] = physical_pos
+        
+        self.reslice_cursor.SetCenter(center)
+        
+        # Update all views
+        for widget in self.reslice_widgets:
+            widget.Render()
 
     def setup_reslice_view(self, placeholder_widget, orientation):
         # Create and configure renderer for the view
@@ -82,6 +132,7 @@ class CTViewer(QWidget):
         reslice_widget.SetRepresentation(reslice_representation)
         reslice_representation.GetResliceCursorActor().GetCursorAlgorithm().SetResliceCursor(self.reslice_cursor)
         reslice_representation.GetResliceCursorActor().GetCursorAlgorithm().SetReslicePlaneNormal(orientation)
+    
     
         # Set window/level for the reslice representation
         scalar_range = self.image_data.GetScalarRange()
