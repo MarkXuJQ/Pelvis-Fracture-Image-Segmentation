@@ -184,7 +184,7 @@ class CTViewer(QWidget):
         # For coronal and sagittal views (using negative mapping)
         self.coronal_slider.setValue(-int(center[1]/self.image_data.GetSpacing()[1]))
         self.sagittal_slider.setValue(-int(center[0]/self.image_data.GetSpacing()[0]))
-        
+    
         # Update all views
         for reslice_widget in self.reslice_widgets:
             if reslice_widget != caller:
