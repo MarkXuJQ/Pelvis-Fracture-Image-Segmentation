@@ -1,6 +1,9 @@
 # Pelvis Fracture Image Segmentation
 
-详细看项目计划：[项目计划书](Project_plan.md)
+详细看[项目计划](Project_plan.md)
+
+
+![1733308086060](image/README/1733308086060.webp)
 
 ## 配置基础环境
 
