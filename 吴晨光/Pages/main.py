@@ -73,8 +73,8 @@ class MainApplication:
         self.patient_manage_page.show()
         global file_image_path
         global file_label_path
-        file_image_path = "C:/Users/MarkXu/Project/大创/吴晨光/15-相关材料/毕设相关源码/patients"
-        file_label_path = "C:/Users/MarkXu/Project/大创/吴晨光/15-相关材料/毕设相关源码/patients"
+        file_image_path = "E:/pytorch/吴晨光毕设源码/15-相关材料/毕设相关源码/patients"
+        file_label_path = "E:/pytorch/吴晨光毕设源码/15-相关材料/毕设相关源码/patients"
 
     # 界面二通过visual到界面三
     def navigateTovisual_result(self):
@@ -107,8 +107,8 @@ class MainApplication:
             self.visual_result_page.hide()
         global file_image_path
         global file_label_path
-        file_image_path = "C:/Users/MarkXu/Project/大创/吴晨光/15-相关材料/毕设相关源码/patients"
-        file_label_path = "C:/Users/MarkXu/Project/大创/吴晨光/15-相关材料/毕设相关源码/patients"
+        file_image_path = "E:/pytorch/吴晨光毕设源码/15-相关材料/毕设相关源码/patients"
+        file_label_path = "E:/pytorch/吴晨光毕设源码/15-相关材料/毕设相关源码/patients"
 
     # 计算路径
     def calculate_image_path(self, file_name):
@@ -136,18 +136,18 @@ class MainApplication:
     def flash_image(self):
         global file_image_path
 
-        file_image_path = "C:/Users/MarkXu/Project/大创/吴晨光/15-相关材料/毕设相关源码/patients"
+        file_image_path = "E:/pytorch/吴晨光毕设源码/15-相关材料/毕设相关源码/patients"
         file_image_path = os.path.join(file_image_path, self.patient_manage_page.tableWidget.item(current_row, 0).text())
 
     # 刷新路径
     def flash_label(self):
         global file_label_path
 
-        file_label_path = "C:/Users/MarkXu/Project/大创/吴晨光/15-相关材料/毕设相关源码/patients"
+        file_label_path = "E:/pytorch/吴晨光毕设源码/15-相关材料/毕设相关源码/patients"
         file_label_path = os.path.join(file_label_path, self.patient_manage_page.tableWidget.item(current_row, 0).text(),"label")
     
 if __name__ == "__main__":
     current_row = -1
-    file_image_path = "C:/Users/MarkXu/Project/大创/吴晨光/15-相关材料/毕设相关源码/patients"
-    file_label_path = "C:/Users/MarkXu/Project/大创/吴晨光/15-相关材料/毕设相关源码/patients"
+    file_image_path = "E:/pytorch/吴晨光毕设源码/15-相关材料/毕设相关源码/patients"
+    file_label_path = "E:/pytorch/吴晨光毕设源码/15-相关材料/毕设相关源码/patients"
     main_app = MainApplication()

@@ -8,7 +8,8 @@ import numpy as np
 import vtk.util.numpy_support as vtk_np
 import vtk
 from vtkmodules.vtkCommonDataModel import vtkImageData
-from vtkmodules.vtkInteractionWidgets import vtkResliceCursor, vtkResliceCursorWidget, vtkResliceCursorLineRepresentation
+from vtkmodules.vtkInteractionWidgets import vtkResliceCursor, vtkResliceCursorWidget, \
+    vtkResliceCursorLineRepresentation
 from vtkmodules.vtkRenderingCore import vtkRenderer, vtkActor, vtkPolyDataMapper, vtkCamera
 from vtkmodules.vtkIOImage import vtkImageImport
 from vtkmodules.vtkFiltersCore import vtkMarchingCubes
@@ -18,6 +19,7 @@ import vtkmodules.vtkRenderingOpenGL2
 
 # Ensures compatibility with macOS for layering issues with PyQt5 and VTK
 os.environ["QT_MAC_WANTS_LAYER"] = "1"
+
 
 class CTViewer(QWidget):
     def __init__(self, sitk_image, render_model=False):
@@ -31,12 +33,12 @@ class CTViewer(QWidget):
         self.reslice_cursor.SetThickMode(False)
         self.reslice_widgets = []
         self.reslice_representations = []
-        
+
         # Load the UI file instead of programmatic layout
-        uic.loadUi('system/ui/ct_viewer.ui', self)
-        
+        uic.loadUi('ui/ct_viewer.ui', self)
+
         self.setup_sliders()
-        
+
         # Setup views using the widgets from UI file
         self.setup_reslice_views()
         self.synchronize_views()
@@ -45,16 +47,17 @@ class CTViewer(QWidget):
             self.generate_and_display_model()
 
     def setup_reslice_views(self):
-    # Initialize VTK widgets
+        # Initialize VTK widgets
         self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_axial').Initialize()
         self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_coronal').Initialize()
         self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_sagittal').Initialize()
-        
+
         # Setup using the widgets from UI file
         self.vtkWidget_axial = self.setup_reslice_view(self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_axial'), 2)
-        self.vtkWidget_coronal = self.setup_reslice_view(self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_coronal'), 1)
-        self.vtkWidget_sagittal = self.setup_reslice_view(self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_sagittal'), 0)
-
+        self.vtkWidget_coronal = self.setup_reslice_view(
+            self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_coronal'), 1)
+        self.vtkWidget_sagittal = self.setup_reslice_view(
+            self.findChild(QVTKRenderWindowInteractor, 'vtkWidget_sagittal'), 0)
 
     def sitk_to_vtk_image(self, sitk_image):
         # Convert SimpleITK image to VTK image
@@ -71,35 +74,35 @@ class CTViewer(QWidget):
         vtk_data_array = vtk.util.numpy_support.vtk_to_numpy(vtk_image.GetPointData().GetScalars())
         vtk_data_array[:] = image_array  # Assign pixel data to VTK image
         return vtk_image
-    
+
     def setup_sliders(self):
         # Get sliders from UI
         self.axial_slider = self.findChild(QSlider, 'axial_slider')
         self.coronal_slider = self.findChild(QSlider, 'coronal_slider')
         self.sagittal_slider = self.findChild(QSlider, 'sagittal_slider')
-        
+
         # Debug print to verify sliders are found
         if not all([self.axial_slider, self.coronal_slider, self.sagittal_slider]):
             print("Warning: Not all sliders were found in the UI")
             return
-        
+
         # Get image dimensions and center positions
         dims = self.image_data.GetDimensions()
         spacing = self.image_data.GetSpacing()
-        
+
         # This allows navigation to both sides of the center
-        self.axial_slider.setRange(-dims[2]//2, dims[2]//2)
-        self.coronal_slider.setRange(-dims[1]//2, dims[1]//2)
-        self.sagittal_slider.setRange(-dims[0]//2, dims[0]//2)
-        
+        self.axial_slider.setRange(-dims[2] // 2, dims[2] // 2)
+        self.coronal_slider.setRange(-dims[1] // 2, dims[1] // 2)
+        self.sagittal_slider.setRange(-dims[0] // 2, dims[0] // 2)
+
         # Set initial values to center (0)
         self.axial_slider.setValue(0)
         self.coronal_slider.setValue(0)
         self.sagittal_slider.setValue(0)
-        
+
         # Connect slider value changes to update functions with offset calculation
         self.axial_slider.valueChanged.connect(
-            lambda value: self.update_slice_position(2, value + dims[2]//2))
+            lambda value: self.update_slice_position(2, value + dims[2] // 2))
         self.coronal_slider.valueChanged.connect(
             lambda value: self.update_slice_position(1, -value))
         self.sagittal_slider.valueChanged.connect(
@@ -109,13 +112,13 @@ class CTViewer(QWidget):
         center = list(self.reslice_cursor.GetCenter())
         dims = self.image_data.GetDimensions()
         spacing = self.image_data.GetSpacing()
-        
+
         # Calculate physical position based on image spacing
         physical_pos = value * spacing[orientation]
         center[orientation] = physical_pos
-        
+
         self.reslice_cursor.SetCenter(center)
-        
+
         # Update all views
         for widget in self.reslice_widgets:
             widget.Render()
@@ -124,30 +127,30 @@ class CTViewer(QWidget):
         # Create and configure renderer for the view
         renderer = vtkRenderer()
         placeholder_widget.GetRenderWindow().AddRenderer(renderer)
-        
+
         # Configure the reslice cursor representation and widget
         reslice_representation = vtkResliceCursorLineRepresentation()
         reslice_widget = vtkResliceCursorWidget()
-        reslice_widget.SetInteractor(placeholder_widget)  
+        reslice_widget.SetInteractor(placeholder_widget)
         reslice_widget.SetRepresentation(reslice_representation)
         reslice_representation.GetResliceCursorActor().GetCursorAlgorithm().SetResliceCursor(self.reslice_cursor)
         reslice_representation.GetResliceCursorActor().GetCursorAlgorithm().SetReslicePlaneNormal(orientation)
-    
-    
+
         # Set window/level for the reslice representation
         scalar_range = self.image_data.GetScalarRange()
-        reslice_representation.SetWindowLevel(scalar_range[1] - scalar_range[0], (scalar_range[1] + scalar_range[0]) / 2)
-        
+        reslice_representation.SetWindowLevel(scalar_range[1] - scalar_range[0],
+                                              (scalar_range[1] + scalar_range[0]) / 2)
+
         # Input data for reslice view
         reslice_representation.GetReslice().SetInputData(self.image_data)
         reslice_representation.GetResliceCursor().SetImage(self.image_data)
-        
+
         # Enable the reslice widget and add it to lists
         reslice_widget.SetEnabled(1)
         reslice_widget.On()
         self.reslice_widgets.append(reslice_widget)
         self.reslice_representations.append(reslice_representation)
-        
+
         # Set camera orientation based on the slice plane
         renderer.ResetCamera()
         camera = renderer.GetActiveCamera()
@@ -162,8 +165,9 @@ class CTViewer(QWidget):
         elif orientation == 0:
             camera.SetPosition(center[0] - 1000, center[1], center[2])
             camera.SetViewUp(0, 0, 1)
-        camera.SetParallelScale(max([dim * spc for dim, spc in zip(self.image_data.GetDimensions(), self.image_data.GetSpacing())]) / 2.0)
-        
+        camera.SetParallelScale(
+            max([dim * spc for dim, spc in zip(self.image_data.GetDimensions(), self.image_data.GetSpacing())]) / 2.0)
+
         return placeholder_widget
 
     def synchronize_views(self):
@@ -176,15 +180,15 @@ class CTViewer(QWidget):
         # Get current cursor position
         center = self.reslice_cursor.GetCenter()
         dims = self.image_data.GetDimensions()
-        
+
         # Update slider positions based on cursor position
         # For axial view
-        self.axial_slider.setValue(int(center[2]/self.image_data.GetSpacing()[2]) - dims[2]//2)
-        
+        self.axial_slider.setValue(int(center[2] / self.image_data.GetSpacing()[2]) - dims[2] // 2)
+
         # For coronal and sagittal views (using negative mapping)
-        self.coronal_slider.setValue(-int(center[1]/self.image_data.GetSpacing()[1]))
-        self.sagittal_slider.setValue(-int(center[0]/self.image_data.GetSpacing()[0]))
-    
+        self.coronal_slider.setValue(-int(center[1] / self.image_data.GetSpacing()[1]))
+        self.sagittal_slider.setValue(-int(center[0] / self.image_data.GetSpacing()[0]))
+
         # Update all views
         for reslice_widget in self.reslice_widgets:
             if reslice_widget != caller:
@@ -206,7 +210,7 @@ class CTViewer(QWidget):
         mapper.SetInputData(poly_data)
         actor = vtkActor()
         actor.SetMapper(mapper)
-        
+
         # Add actor to the renderer
         self.model_renderer.AddActor(actor)
         self.model_renderer.SetBackground(0.68, 0.85, 0.9)
@@ -219,7 +223,7 @@ class CTViewer(QWidget):
         thresholded_image = np.where((image_array >= 300) & (image_array <= 3000), image_array, 0)
         shape = thresholded_image.shape
         flat_image_array = thresholded_image.flatten(order="C")
-        
+
         importer = vtkImageImport()
         importer.CopyImportVoidPointer(flat_image_array, flat_image_array.nbytes)
         importer.SetDataScalarType(VTK_FLOAT)
@@ -229,7 +233,7 @@ class CTViewer(QWidget):
         importer.SetDataSpacing(self.sitk_image.GetSpacing())
         importer.SetDataOrigin(self.sitk_image.GetOrigin())
         importer.Update()
-        
+
         # Run marching cubes algorithm to generate a surface model
         vtk_image = importer.GetOutput()
         contour_filter = vtkMarchingCubes()
@@ -246,10 +250,11 @@ class CTViewer(QWidget):
                 del widget
         super().closeEvent(event)
 
+
 # Main execution of the application
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    image_path = '/Users/markxu/Downloads/001.mha'  # Path to medical image file
+    image_path = 'E:/pytorch/Data_Content/001.mha'  # Path to medical image file
     sitk_image = sitk.ReadImage(image_path)  # Read the image using SimpleITK
     viewer = CTViewer(sitk_image)  # Create an instance of the viewer with the image
     viewer.show()  # Display the viewer window
