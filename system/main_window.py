@@ -10,7 +10,12 @@ from settings_dialog import SettingsDialog
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        uic.loadUi("system/ui/main_window.ui", self)  # Load the UI from XML file
+        uic.loadUi("ui/main_window.ui", self)  # Load the UI from XML file
+        #ui_path = os.path.join(os.path.dirname(__file__), "system/ui/main_window.ui")
+        with open('ui/button_style.qss', 'r', encoding='utf-8') as f:
+            #content = f.read()
+            self.setStyleSheet(f.read())
+
         self.setWindowTitle("Medical Image Viewer")
         self.setGeometry(100, 100, 1200, 800)
         self.viewer = None  # Will hold the current image viewer
@@ -19,30 +24,29 @@ class MainWindow(QMainWindow):
 
     def initUI(self):
         # Create actions
-        open_action = QAction('Open Image', self)
-        open_action.triggered.connect(self.open_image)
+        #open_action = QAction('Open Image', self)
+        #open_action.triggered.connect(self.open_image)
 
-        save_as_action = QAction('Save As', self)
-        save_as_action.triggered.connect(self.save_image)
-        save_as_action.setEnabled(False)  # Disabled initially
+        # save_as_action = QAction('Save As', self)
+        # save_as_action.triggered.connect(self.save_image)
 
-        exit_action = QAction('Exit', self)
-        exit_action.triggered.connect(self.close)
+        # exit_action = QAction('Exit', self)
+        # exit_action.triggered.connect(self.close)
         
         # Create settings action
-        settings_action = QAction('Settings', self)
-        settings_action.triggered.connect(self.open_settings)
+        # settings_action = QAction('Settings', self)
+        # settings_action.triggered.connect(self.open_settings)
 
         # Create menu bar
-        menubar = self.menuBar()
+        '''menubar = self.menuBar()
         file_menu = menubar.addMenu('File')
         file_menu.addAction(open_action)
         file_menu.addAction(save_as_action)
         file_menu.addAction(exit_action)
-        file_menu.addAction(settings_action)
+        file_menu.addAction(settings_action)'''
 
         # Save the action for later use
-        self.save_as_action = save_as_action
+        #self.save_as_action = save_as_action
         
         # Create a toolbar
         toolbar = QToolBar("Main Toolbar")
@@ -62,6 +66,11 @@ class MainWindow(QMainWindow):
         toolbar.addAction(create_crosshairs_action)
         self.create_crosshairs_action = create_crosshairs_action
 
+        self.open_action.clicked.connect(self.open_image)
+        self.save_as_action.clicked.connect(self.save_image)
+        self.save_as_action.setEnabled(False)
+        self.exit_action.clicked.connect(self.close)
+        self.settings_action.clicked.connect(self.open_settings)
         # Connect Patient Management button
         self.sure.clicked.connect(self.open_patient_manage)
 
