@@ -1,6 +1,6 @@
 # Pelvis Fracture Image Segmentation
 
-[项目计划](Project_plan.md)
+[面向精准骨外科手术的多模态医学图像分析算法及系统](Project_plan.md)
 
  <img src="image/logo.png" width="300">
 

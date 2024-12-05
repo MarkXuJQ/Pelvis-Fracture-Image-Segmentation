@@ -35,7 +35,7 @@ class CTViewer(QWidget):
         self.reslice_representations = []
 
         # Load the UI file instead of programmatic layout
-        uic.loadUi('ui/ct_viewer.ui', self)
+        uic.loadUi('system/ui/ct_viewer.ui', self)
 
         self.setup_sliders()
 
