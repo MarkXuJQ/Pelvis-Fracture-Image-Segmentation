@@ -400,11 +400,17 @@ if __name__ == "__main__":
     import sys
     app = QtWidgets.QApplication(sys.argv)
     window = DicomVis()
-    print(type(window))
     window.show()
 
-    studyPath = "D:\\DICOM"
-    window.load_dicom_from_path(studyPath)
+    # Load a .mha file
+    mhaFilePath = r"D:\pelvis-source\001.mha"  # Replace with the actual path to your .mha file
+    reader = vtk.vtkMetaImageReader()
+    reader.SetFileName(mhaFilePath)
+    reader.Update()
+
+    # Set the image data from the .mha file
+    window.ImageData.DeepCopy(reader.GetOutput())
+    window.show_Data()
+
     exitStatus = app.exec_()
-    #del(window)
     sys.exit(exitStatus)

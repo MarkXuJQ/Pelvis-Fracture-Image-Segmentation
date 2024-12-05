@@ -254,7 +254,8 @@ class CTViewer(QWidget):
 # Main execution of the application
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    image_path = 'E:/pytorch/Data_Content/001.mha'  # Path to medical image file
+
+    image_path = r"D:\pelvis-source\001.mha"  # Path to medical image file
     sitk_image = sitk.ReadImage(image_path)  # Read the image using SimpleITK
     viewer = CTViewer(sitk_image)  # Create an instance of the viewer with the image
     viewer.show()  # Display the viewer window
