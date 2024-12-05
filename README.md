@@ -4,6 +4,23 @@
 
  <img src="image/logo.png" width="300">
 
+## 项目结构
+
+```
+pelvis_seg/
+├── system/ # 系统模块
+│   ├── main.py # 主程序
+│   ├── main_window.py # 主窗口
+│   ├── ct_viewer.py # CT图像处理
+│   ├── xray_viewer.py # X光图像处理
+│   ├── patient_manager.py # 患者管理
+│   ├── ui # 项目对应ui
+├── ct_seg/ # CT图像分割
+│   ├── ...
+├── xray_seg/ # X光图像分割
+│   ├── ...
+```
+
 ## Medical Image Viewer Installation Guide
 
 ### 环境要求
