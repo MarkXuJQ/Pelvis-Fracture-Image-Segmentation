@@ -1,5 +1,6 @@
 # Ignore dataset folder
 /ct_seg/data/
+/xray_seg/data/
 
 # Ignore log files
 *.log

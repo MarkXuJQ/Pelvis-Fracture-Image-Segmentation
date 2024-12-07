@@ -1,104 +1,79 @@
 # CT Segmentation Project
 
-This repository contains the setup for a pelvis CT segmentation project using deep learning models such as U-Net and its variants. The project aims to provide an effective framework for medical image segmentation, utilizing a well-organized folder structure for data, models, and results.
+这个项目是一个CT图像分割项目，使用深度学习方法进行骨盆CT图像分割。
+This repository contains a CT image segmentation project focusing on pelvis CT segmentation using deep learning approaches.
 
-## Folder Structure
+## 项目结构 Project Structure
 
 ```
 ct_seg/
 │
-├── data/             # Contains CT scan data and corresponding labels.
-│   ├── PENGWIN_CT_train_images/   # Folder with training images for CT segmentation.combined part 1 2. 
-│   ├── PENGWIN_CT_train_labels/   # Folder with labels for the training images.
+├── data/             
+│   ├── raw/         # 原始CT图像数据 Raw CT image data
+│   ├── processed/   # 预处理后的数据 Processed data
+│   └── results/     # 模型输出结果 Model outputs
 │
-├── models/           # Directory for different trained models, including their outputs.
-│   ├── U-net/                  # Folder containing the U-Net model, checkpoints, and outputs.
-│   │   ├── checkpoints/        # Checkpoints for the U-Net model to save training progress.
-│   │   ├── predictions/        # Predicted segmentation outputs by the U-Net model on test data.
-│   │   ├── metrics/            # Evaluation results for the U-Net model, such as accuracy and IoU.
+├── src/             
+│   ├── models/      # 模型定义 Model definitions
+│   └── predict/     # 预测代码 Prediction code
 │
-├── README.md         # Documentation for the project.
+├── notebooks/       
 │
-├── requirements.txt  # List of Python dependencies for the project.
-
+└── README.md        
 ```
 
-## Getting Started
+## 环境配置 Environment Setup
 
-### Prerequisites
+### 前置要求 Prerequisites
 
-This project requires the following software to be installed:
+- Python 3.10+
+- CUDA 11.8+ (用于GPU加速 for GPU acceleration)
 
-- Python 3.10
-- Anaconda (optional but recommended)
-- CUDA 11.8 for GPU acceleration
+### 安装步骤 Installation
 
-### Installation
-
-1. Clone this repository:
-
+1. 克隆仓库 Clone the repository:
    ```bash
    git clone <repository_url>
    cd ct_seg
    ```
-2. Set up a virtual environment with Anaconda:
 
-   ```bash
-   conda create -n ct_seg python=3.10
-   conda activate ct_seg
-   ```
-3. Install the required dependencies:
-
+2. 安装依赖 Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-### Preparing Data
+## 使用说明 Usage
 
-1. Place the CT scan data and corresponding labels into the `data/` folder.
-2. Make sure that your data is properly organized for training and evaluation.
+### 训练模型 Training
 
-### Training a Model
+使用notebooks目录下的训练脚本来训练模型：
+Use the training scripts in the notebooks directory to train the model.
 
-Run the training script to train the U-Net model on the dataset:
 
-```bash
-python src/train.py
-```
+### 预测 Prediction
 
-Make sure that the data paths inside the training script point to the correct directories in `ct_seg/data`.
+使用 `src/predict` 目录下的代码进行预测：
+Use the code in `src/predict` directory for making predictions.
 
-### Evaluating a Model
 
-To evaluate the model, run:
+## 项目结构说明 Directory Details
 
-```bash
-python src/evaluate.py
-```
+- `data/`: 存放数据集，包括原始数据和处理后的数据
+  Contains datasets, including both raw and processed data
+  
+- `src/models/`: 包含模型架构定义
+  Contains model architecture definitions
+  
+- `src/predict/`: 包含用于预测的代码
+  Contains code for making predictions
+  
+- `src/results/`: 存储模型输出结果
+  Stores model output results
+  
+- `notebooks/`: 包含用于实验和训练的Jupyter notebooks
+  Contains Jupyter notebooks for experiments and training
 
-This will generate evaluation metrics and save outputs to the `outputs/` folder.
+## 贡献 Contributing
 
-## Dependencies
-
-The project requires the following Python packages, which are listed in `requirements.txt`:
-
-- torch
-- torchvision
-- torchaudio
-- SimpleITK
-- numpy
-- matplotlib
-
-## Usage
-
-- Modify the `train.py` and `evaluate.py` scripts to point to the correct data and model paths.
-- Store different versions of models inside the `models/` directory.
-- The `outputs/` folder will contain prediction results, logs, and other generated output files.
-
-## Contributing
-
-Feel free to contribute to this project by forking the repository and submitting a pull request. Any improvements, such as new models or enhancements to the training pipeline, are welcome!
-
-## License
-
-This project is licensed under the MIT License.
+欢迎提交 Pull Requests 来改进项目。
+Feel free to submit Pull Requests to improve the project.
