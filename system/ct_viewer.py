@@ -1,7 +1,7 @@
 import sys
 import os
 from PyQt5 import uic
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QMessageBox
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import SimpleITK as sitk
 import numpy as np
@@ -38,13 +38,28 @@ class CTViewer(QWidget):
         uic.loadUi('ui/ct_viewer.ui', self)
 
         self.setup_sliders()
-
+        self.Generate_Model.clicked.connect(self.generate_model)
+        self.Back.clicked.connect(self.back_to_MainWindow)
         # Setup views using the widgets from UI file
         self.setup_reslice_views()
         self.synchronize_views()
         self.setup_model_view()
         if self.render_model:
             self.generate_and_display_model()
+
+    def back_to_MainWindow(self):
+        # 询问用户是否确定退出
+        from system.main_window import MainWindow
+        main_window = self.parent()  # Assuming the parent of CTViewer is the MainWindow
+        self.close()  # 关闭当前窗口 (CTViewer)
+        main_window.close()
+        self.main_window = MainWindow()
+        self.main_window.show()
+
+
+    def generate_model(self):
+        self.render_model = True
+        self.generate_and_display_model()
 
     def setup_reslice_views(self):
         # Initialize VTK widgets
@@ -255,7 +270,7 @@ class CTViewer(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    image_path = r"D:\pelvis-source\001.mha"  # Path to medical image file
+    image_path = r"E:\pytorch\Data_Content\001.mha"  # Path to medical image file
     sitk_image = sitk.ReadImage(image_path)  # Read the image using SimpleITK
     viewer = CTViewer(sitk_image)  # Create an instance of the viewer with the image
     viewer.show()  # Display the viewer window

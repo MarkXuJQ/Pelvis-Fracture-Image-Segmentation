@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="13c6541a-20d5-4502-a1c3-8f51704be0a5" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/system/ct_viewer.py" beforeDir="false" afterPath="$PROJECT_DIR$/system/ct_viewer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/system/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/system/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/system/patient_manage.py" beforeDir="false" afterPath="$PROJECT_DIR$/system/patient_manage.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/system/ui/button_style.qss" beforeDir="false" afterPath="$PROJECT_DIR$/system/ui/button_style.qss" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/system/ui/ct_viewer.ui" beforeDir="false" afterPath="$PROJECT_DIR$/system/ui/ct_viewer.ui" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/system/ui/main_window.ui" beforeDir="false" afterPath="$PROJECT_DIR$/system/ui/main_window.ui" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/DicomVis_ok.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/DicomVis_ui.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/Patient_Image.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/Patient_Manage.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/Visual_Split_result.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/main.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/test.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/test3.0.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/Pages/test_2.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/ui/patient_image.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/ui/patient_manage.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/ui/test3.0.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/ui/visual_split_result.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/ui/visual_split_result.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/ui/visual_split_result_1.0.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/ui/visual_split_result_1.0.ui" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/吴晨光/ui/vs_test.ui" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/system/main_window.py" root0="FORCE_HIGHLIGHTING" />
+  </component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
+  </component>
+  <component name="ProjectId" id="2pmHY63YDwFdg1WPHVPEKPTIEdK" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "last_opened_file_path": "E:/Pycharm/FCSystem/BaseMain.py",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
+  }
+}]]></component>
+  <component name="RunManager" selected="Python.main">
+    <configuration name="ct_viewer" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Pelvis-Fracture-Image-Segmentation" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/system" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/system/ct_viewer.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Pelvis-Fracture-Image-Segmentation" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/system" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/system/main.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.main" />
+        <item itemvalue="Python.ct_viewer" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="13c6541a-20d5-4502-a1c3-8f51704be0a5" name="Changes" comment="" />
+      <created>1733364376011</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1733364376011</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
