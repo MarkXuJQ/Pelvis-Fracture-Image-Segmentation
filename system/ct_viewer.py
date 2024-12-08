@@ -1,7 +1,7 @@
 import sys
 import os
 from PyQt5 import uic
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QMessageBox
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import SimpleITK as sitk
 import numpy as np
@@ -34,17 +34,44 @@ class CTViewer(QWidget):
         self.reslice_widgets = []
         self.reslice_representations = []
 
-        # Load the UI file instead of programmatic layout
-        uic.loadUi('system/ui/ct_viewer.ui', self)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        ui_file = os.path.join(current_dir, "ui", "ct_viewer.ui")
+        
+        uic.loadUi(ui_file, self)
 
         self.setup_sliders()
-
+        self.Generate_Model.clicked.connect(self.generate_model)
+        self.Back.clicked.connect(self.back_to_MainWindow)
         # Setup views using the widgets from UI file
         self.setup_reslice_views()
         self.synchronize_views()
         self.setup_model_view()
         if self.render_model:
             self.generate_and_display_model()
+
+        # Add mouse interaction states
+        self.is_panning = False
+        self.last_mouse_pos = None
+        self.zoom_factor = 1.0
+        self.window_level = None
+        self.window_width = None
+
+        # Setup mouse interaction for all views
+        self.setup_mouse_interaction()
+
+    def back_to_MainWindow(self):
+        # 询问用户是否确定退出
+        from system.main_window import MainWindow
+        main_window = self.parent()  # Assuming the parent of CTViewer is the MainWindow
+        self.close()  # 关闭当前窗口 (CTViewer)
+        main_window.close()
+        self.main_window = MainWindow()
+        self.main_window.show()
+
+
+    def generate_model(self):
+        self.render_model = True
+        self.generate_and_display_model()
 
     def setup_reslice_views(self):
         # Initialize VTK widgets
@@ -102,7 +129,7 @@ class CTViewer(QWidget):
 
         # Connect slider value changes to update functions with offset calculation
         self.axial_slider.valueChanged.connect(
-            lambda value: self.update_slice_position(2, value + dims[2] // 2))
+            lambda value: self.update_slice_position(2, -value - dims[2] // 2))
         self.coronal_slider.valueChanged.connect(
             lambda value: self.update_slice_position(1, -value))
         self.sagittal_slider.valueChanged.connect(
@@ -250,12 +277,101 @@ class CTViewer(QWidget):
                 del widget
         super().closeEvent(event)
 
+    def setup_mouse_interaction(self):
+        """Setup mouse interaction for all views"""
+        for widget in [self.vtkWidget_axial, self.vtkWidget_coronal, self.vtkWidget_sagittal]:
+            interactor = widget.GetRenderWindow().GetInteractor()
+
+            # Add observers for mouse events
+            interactor.AddObserver("LeftButtonPressEvent", self.on_left_button_press)
+            interactor.AddObserver("LeftButtonReleaseEvent", self.on_left_button_release)
+            interactor.AddObserver("MouseMoveEvent", self.on_mouse_move)
+            interactor.AddObserver("MouseWheelForwardEvent", self.on_mouse_wheel_forward)
+            interactor.AddObserver("MouseWheelBackwardEvent", self.on_mouse_wheel_backward)
+            interactor.AddObserver("RightButtonPressEvent", self.on_right_button_press)
+            interactor.AddObserver("RightButtonReleaseEvent", self.on_right_button_release)
+
+            # Set interaction style
+            style = interactor.GetInteractorStyle()
+            style.SetCurrentStyleToTrackballCamera()
+
+    def on_left_button_press(self, obj, event):
+        """Handle left button press for panning"""
+        self.is_panning = True
+        self.last_mouse_pos = obj.GetEventPosition()
+
+    def on_left_button_release(self, obj, event):
+        """Handle left button release"""
+        self.is_panning = False
+        self.last_mouse_pos = None
+
+    def on_mouse_move(self, obj, event):
+        """Handle mouse movement for panning and window/level adjustment"""
+        if not self.last_mouse_pos:
+            return
+
+        current_pos = obj.GetEventPosition()
+        dx = current_pos[0] - self.last_mouse_pos[0]
+        dy = current_pos[1] - self.last_mouse_pos[1]
+
+        if self.is_panning:
+            # Pan the camera
+            camera = obj.GetRenderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
+            fp = list(camera.GetFocalPoint())
+            pos = list(camera.GetPosition())
+
+            camera.SetFocalPoint(fp[0] - dx, fp[1] - dy, fp[2])
+            camera.SetPosition(pos[0] - dx, pos[1] - dy, pos[2])
+
+        elif self.window_level is not None:
+            # Adjust window/level
+            self.window_width += dx * 10
+            self.window_level += dy * 10
+            self.update_window_level()
+
+        self.last_mouse_pos = current_pos
+        obj.GetRenderWindow().Render()
+
+    def on_mouse_wheel_forward(self, obj, event):
+        """Handle mouse wheel forward for zooming in"""
+        self.zoom_factor *= 1.1
+        self.apply_zoom(obj)
+
+    def on_mouse_wheel_backward(self, obj, event):
+        """Handle mouse wheel backward for zooming out"""
+        self.zoom_factor /= 1.1
+        self.apply_zoom(obj)
+
+    def on_right_button_press(self, obj, event):
+        """Handle right button press for window/level adjustment"""
+        self.window_level = self.reslice_representations[0].GetWindowLevel()
+        self.window_width = self.reslice_representations[0].GetWindow()
+        self.last_mouse_pos = obj.GetEventPosition()
+
+    def on_right_button_release(self, obj, event):
+        """Handle right button release"""
+        self.window_level = None
+        self.last_mouse_pos = None
+
+    def apply_zoom(self, obj):
+        """Apply zoom to the camera"""
+        camera = obj.GetRenderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
+        camera.SetParallelScale(camera.GetParallelScale() / self.zoom_factor)
+        self.zoom_factor = 1.0  # Reset zoom factor
+        obj.GetRenderWindow().Render()
+
+    def update_window_level(self):
+        """Update window/level for all views"""
+        for rep in self.reslice_representations:
+            rep.SetWindowLevel(self.window_width, self.window_level)
+            rep.GetResliceCursorWidget().Render()
+
 
 # Main execution of the application
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    image_path = r"D:\pelvis-source\001.mha"  # Path to medical image file
+    image_path = r"ct_seg\data\PENGWIN_CT_train_images\001.mha"  # Path to medical image file
     sitk_image = sitk.ReadImage(image_path)  # Read the image using SimpleITK
     viewer = CTViewer(sitk_image)  # Create an instance of the viewer with the image
     viewer.show()  # Display the viewer window

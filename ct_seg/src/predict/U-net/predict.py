@@ -2,10 +2,11 @@
 import torch
 import SimpleITK as sitk
 import numpy as np
-from unet_model import UNet3D
+from unet_model import UNet3D 
 import matplotlib.pyplot as plt
 import os
 import traceback
+from skimage.filters import threshold_otsu
 
 def predict_single_scan(model_path, input_image_path, output_path=None, patch_size=(128, 128, 128), overlap=16):
     if torch.cuda.is_available():
@@ -42,7 +43,7 @@ def predict_single_scan(model_path, input_image_path, output_path=None, patch_si
         print(f"Error loading model: {e}")
         return None
     
-    # 加载和预处理图像
+    # 加���和预处理图像
     try:
         image = sitk.ReadImage(input_image_path)
         image_array = sitk.GetArrayFromImage(image)
@@ -85,12 +86,16 @@ def predict_single_scan(model_path, input_image_path, output_path=None, patch_si
                     with torch.no_grad():
                         patch_pred = model(patch_tensor)
                         
-                        # 打印预测值的统计信息
                         print(f"Prediction stats before sigmoid:")
                         print(f"Mean: {patch_pred.mean().item():.4f}")
                         print(f"Max: {patch_pred.max().item():.4f}")
                         print(f"Min: {patch_pred.min().item():.4f}")
                         
+                        # 1. 归一化预测值
+                        if patch_pred.max().item() < 0:
+                            patch_pred = (patch_pred - patch_pred.min()) / (patch_pred.max() - patch_pred.min())
+                        
+                        # 2. 应用sigmoid
                         patch_pred = torch.sigmoid(patch_pred)
                         
                         print(f"Prediction stats after sigmoid:")
@@ -98,32 +103,38 @@ def predict_single_scan(model_path, input_image_path, output_path=None, patch_si
                         print(f"Max: {patch_pred.max().item():.4f}")
                         print(f"Min: {patch_pred.min().item():.4f}")
                         
-                        # 动态阈值计算
-                        max_val = patch_pred.max().item()
-                        mean_val = patch_pred.mean().item()
+                        # 3. 转换到numpy进行处理
+                        patch_pred_np = patch_pred.cpu().numpy().squeeze()
                         
-                        # 方法1：基于最大值的动态阈值
-                        dynamic_threshold = max_val * 0.3  # 取最大值的30%
+                        # 4. 计算动态阈值
+                        # 使用Otsu's方法或基于分布的阈值
+                        try:
+                            threshold = threshold_otsu(patch_pred_np)
+                            print(f"Dynamic threshold: {threshold:.4f}")
+                        except:
+                            threshold = 0.5  # 如果Otsu方法失败，使用默认阈值
+                            print(f"Using default threshold: {threshold}")
                         
-                        # 方法2：基于均值和最大值的组合
-                        # dynamic_threshold = mean_val + (max_val - mean_val) * 0.3
+                        # 5. 应用阈值
+                        binary_pred = (patch_pred_np > threshold).astype(np.uint8)
                         
-                        print(f"Dynamic threshold: {dynamic_threshold:.4f}")
-                        
-                        patch_pred = patch_pred > dynamic_threshold
-                        patch_pred = patch_pred.cpu().numpy().squeeze().astype(np.uint8)
-                        
-                        # 打印二值化后的统计信息
+                        # 6. 打印二值化后的统计信息
                         print(f"Binary prediction stats:")
-                        print(f"Non-zero pixels: {np.count_nonzero(patch_pred)}")
-                        print(f"Total pixels: {patch_pred.size}")
-                        print(f"Percentage: {100 * np.count_nonzero(patch_pred) / patch_pred.size:.2f}%")
-                    
-                    # 将预测结果放回原始大小的数组
-                    prediction_array[d_start:d_end, h_start:h_end, w_start:w_end] = patch_pred
-                    
-                    # 再次清除 GPU 缓存
-                    torch.cuda.empty_cache()
+                        print(f"Non-zero pixels: {np.count_nonzero(binary_pred)}")
+                        print(f"Total pixels: {binary_pred.size}")
+                        print(f"Percentage: {100 * np.count_nonzero(binary_pred) / binary_pred.size:.2f}%")
+                        
+                        # 7. 如果预测比例不合理，进行调整
+                        if np.count_nonzero(binary_pred) / binary_pred.size > 0.5:  # 如果白色像素超过50%
+                            binary_pred.fill(0)  # 清零
+                        elif np.count_nonzero(binary_pred) / binary_pred.size < 0.001:  # 如果白色像素太少
+                            # 尝试使用更低的阈值
+                            binary_pred = (patch_pred_np > threshold * 0.5).astype(np.uint8)
+                        
+                        prediction_array[d_start:d_end, h_start:h_end, w_start:w_end] = binary_pred
+                        
+                        # 再次清除 GPU 缓存
+                        torch.cuda.empty_cache()
         
         print("Prediction completed successfully")
         
@@ -134,6 +145,11 @@ def predict_single_scan(model_path, input_image_path, output_path=None, patch_si
     # 保存结果
     if output_path:
         try:
+            # 如果文件存在，先删除
+            if os.path.exists(output_path):
+                os.remove(output_path)
+                print(f"Removed existing file: {output_path}")
+            
             # 确保输出目录存在
             output_dir = os.path.dirname(output_path)
             if not os.path.exists(output_dir):
@@ -173,7 +189,7 @@ def predict_single_scan(model_path, input_image_path, output_path=None, patch_si
     except Exception as e:
         print(f"Error verifying saved file: {e}")
     
-    # 在处理完整个图像后，添加这些检查
+    # 在处理整个图像后，添加这些检查
     print(f"Final prediction array stats:")
     print(f"Unique values: {np.unique(prediction_array)}")
     print(f"Non-zero pixels: {np.count_nonzero(prediction_array)}")
@@ -188,7 +204,7 @@ def predict_single_scan(model_path, input_image_path, output_path=None, patch_si
 
 if __name__ == "__main__":
     # 设置路径
-    model_path = r'ct_seg\notebooks\best_unet_model.pth'
+    model_path = r'ct_seg\notebooks\best_model_loss.pth'
     input_path = r'ct_seg\data\PENGWIN_CT_train_images\051.mha'
     output_path = r'ct_seg\data\results\U_net\segmentation.mha'
     
