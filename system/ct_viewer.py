@@ -34,8 +34,10 @@ class CTViewer(QWidget):
         self.reslice_widgets = []
         self.reslice_representations = []
 
-        # Load the UI file instead of programmatic layout
-        uic.loadUi('ui/ct_viewer.ui', self)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        ui_file = os.path.join(current_dir, "ui", "ct_viewer.ui")
+        
+        uic.loadUi(ui_file, self)
 
         self.setup_sliders()
         self.Generate_Model.clicked.connect(self.generate_model)
@@ -127,7 +129,7 @@ class CTViewer(QWidget):
 
         # Connect slider value changes to update functions with offset calculation
         self.axial_slider.valueChanged.connect(
-            lambda value: self.update_slice_position(2, value + dims[2] // 2))
+            lambda value: self.update_slice_position(2, -value - dims[2] // 2))
         self.coronal_slider.valueChanged.connect(
             lambda value: self.update_slice_position(1, -value))
         self.sagittal_slider.valueChanged.connect(
@@ -369,7 +371,7 @@ class CTViewer(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    image_path = r"E:\pytorch\Data_Content\001.mha"  # Path to medical image file
+    image_path = r"ct_seg\data\PENGWIN_CT_train_images\001.mha"  # Path to medical image file
     sitk_image = sitk.ReadImage(image_path)  # Read the image using SimpleITK
     viewer = CTViewer(sitk_image)  # Create an instance of the viewer with the image
     viewer.show()  # Display the viewer window

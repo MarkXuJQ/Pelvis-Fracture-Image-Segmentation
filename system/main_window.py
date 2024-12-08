@@ -14,8 +14,15 @@ from settings_dialog import SettingsDialog
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        uic.loadUi("ui/main_window.ui", self)  # Load the UI from XML file
-        #ui_path = os.path.join(os.path.dirname(__file__), "system/ui/main_window.ui")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        ui_file = os.path.join(current_dir, "ui", "main_window.ui")
+        
+        # 调试输出
+        print(f"Current directory: {current_dir}")
+        print(f"UI file path: {ui_file}")
+        print(f"UI file exists: {os.path.exists(ui_file)}")
+        
+        uic.loadUi(ui_file, self)
         with open('ui/button_style.qss', 'r', encoding='utf-8') as f:
             #content = f.read()
             self.setStyleSheet(f.read())
