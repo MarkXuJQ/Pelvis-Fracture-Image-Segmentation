@@ -1,6 +1,6 @@
 # Pelvis Fracture Image Segmentation
 
-[项目计划](Project_plan.md)
+[面向精准骨外科手术的多模态医学图像分析算法及系统](Project_plan.md)
 
  <img src="image/logo.png" width="300">
 
@@ -114,6 +114,18 @@ conda config --set show_channel_urls yes
 - NIfTI (.nii, .nii.gz)
 - NRRD (.nrrd)
 - MetaImage (.mha, .mhd)
+
+### 数据来源 | Data Sources
+
+#### CT 图像数据集 | CT Image Dataset
+来自 PENGWIN Task 1 骨盆骨折CT图像分割挑战赛的训练数据集，包含100例带有骨盆骨折的CT扫描及其分割标注。
+From PENGWIN Task 1 Pelvic Fracture Segmentation Challenge training dataset, containing 100 CT scans with pelvic fractures and their segmentation labels.
+- 数据集链接 | Dataset Link: [@Zenodo](https://doi.org/10.5281/zenodo.10927452)
+
+#### X光图像数据集 | X-ray Image Dataset
+来自 PENGWIN Task 2 骨盆骨折X光图像分割挑战赛的训练数据集，包含由CT数据通过DeepDRR生成的50,000张合成X光图像及其分割标注。
+From PENGWIN Task 2 Pelvic Fragment Segmentation Challenge training dataset, containing 50,000 synthetic X-ray images and segmentations generated from CT data using DeepDRR.
+- 数据集链接 | Dataset Link: [@Zenodo](https://doi.org/10.5281/zenodo.10913195)
 
 ### 注意事项
 1. 建议使用独立的虚拟环境来避免包冲突
