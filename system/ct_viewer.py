@@ -1,7 +1,7 @@
 import sys
 import os
 from PyQt5 import uic
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QMessageBox
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import SimpleITK as sitk
 import numpy as np
@@ -35,10 +35,11 @@ class CTViewer(QWidget):
         self.reslice_representations = []
 
         # Load the UI file instead of programmatic layout
-        uic.loadUi('system/ui/ct_viewer.ui', self)
+        uic.loadUi('ui/ct_viewer.ui', self)
 
         self.setup_sliders()
-
+        self.Generate_Model.clicked.connect(self.generate_model)
+        self.Back.clicked.connect(self.back_to_MainWindow)
         # Setup views using the widgets from UI file
         self.setup_reslice_views()
         self.synchronize_views()
@@ -52,9 +53,23 @@ class CTViewer(QWidget):
         self.zoom_factor = 1.0
         self.window_level = None
         self.window_width = None
-        
+
         # Setup mouse interaction for all views
         self.setup_mouse_interaction()
+
+    def back_to_MainWindow(self):
+        # 询问用户是否确定退出
+        from system.main_window import MainWindow
+        main_window = self.parent()  # Assuming the parent of CTViewer is the MainWindow
+        self.close()  # 关闭当前窗口 (CTViewer)
+        main_window.close()
+        self.main_window = MainWindow()
+        self.main_window.show()
+
+
+    def generate_model(self):
+        self.render_model = True
+        self.generate_and_display_model()
 
     def setup_reslice_views(self):
         # Initialize VTK widgets
@@ -264,7 +279,7 @@ class CTViewer(QWidget):
         """Setup mouse interaction for all views"""
         for widget in [self.vtkWidget_axial, self.vtkWidget_coronal, self.vtkWidget_sagittal]:
             interactor = widget.GetRenderWindow().GetInteractor()
-            
+
             # Add observers for mouse events
             interactor.AddObserver("LeftButtonPressEvent", self.on_left_button_press)
             interactor.AddObserver("LeftButtonReleaseEvent", self.on_left_button_release)
@@ -273,7 +288,7 @@ class CTViewer(QWidget):
             interactor.AddObserver("MouseWheelBackwardEvent", self.on_mouse_wheel_backward)
             interactor.AddObserver("RightButtonPressEvent", self.on_right_button_press)
             interactor.AddObserver("RightButtonReleaseEvent", self.on_right_button_release)
-            
+
             # Set interaction style
             style = interactor.GetInteractorStyle()
             style.SetCurrentStyleToTrackballCamera()
@@ -292,26 +307,26 @@ class CTViewer(QWidget):
         """Handle mouse movement for panning and window/level adjustment"""
         if not self.last_mouse_pos:
             return
-            
+
         current_pos = obj.GetEventPosition()
         dx = current_pos[0] - self.last_mouse_pos[0]
         dy = current_pos[1] - self.last_mouse_pos[1]
-        
+
         if self.is_panning:
             # Pan the camera
             camera = obj.GetRenderWindow().GetRenderers().GetFirstRenderer().GetActiveCamera()
             fp = list(camera.GetFocalPoint())
             pos = list(camera.GetPosition())
-            
+
             camera.SetFocalPoint(fp[0] - dx, fp[1] - dy, fp[2])
             camera.SetPosition(pos[0] - dx, pos[1] - dy, pos[2])
-            
+
         elif self.window_level is not None:
             # Adjust window/level
             self.window_width += dx * 10
             self.window_level += dy * 10
             self.update_window_level()
-        
+
         self.last_mouse_pos = current_pos
         obj.GetRenderWindow().Render()
 
@@ -348,3 +363,14 @@ class CTViewer(QWidget):
         for rep in self.reslice_representations:
             rep.SetWindowLevel(self.window_width, self.window_level)
             rep.GetResliceCursorWidget().Render()
+
+
+# Main execution of the application
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+
+    image_path = r"E:\pytorch\Data_Content\001.mha"  # Path to medical image file
+    sitk_image = sitk.ReadImage(image_path)  # Read the image using SimpleITK
+    viewer = CTViewer(sitk_image)  # Create an instance of the viewer with the image
+    viewer.show()  # Display the viewer window
+    sys.exit(app.exec_())  # Execute the application

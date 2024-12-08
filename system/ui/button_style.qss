@@ -75,7 +75,8 @@ QTableWidget::header {
 /* ListWidget Styling */
 QListWidget {
     background-color: #FFFFFF;
-    border: 1px solid #ddd;
+    border: 2px solid #ddd;
+    border-radius: 10px;      /* 设置圆角半径 */
     font-size: 12pt;
     padding: 10px;
 }

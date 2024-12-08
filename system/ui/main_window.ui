@@ -46,7 +46,7 @@
          <bool>false</bool>
         </property>
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:12pt;&quot;&gt;Image_Operation&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:12pt;&quot;&gt;Operations&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
@@ -60,16 +60,9 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="save_as_action">
+         <widget class="QPushButton" name="addButton">
           <property name="text">
-           <string>Save As</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="exit_action">
-          <property name="text">
-           <string>Exit</string>
+           <string>Add_Patient_info</string>
           </property>
          </widget>
         </item>
@@ -77,6 +70,13 @@
          <widget class="QPushButton" name="settings_action">
           <property name="text">
            <string>Settings</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="exit_action">
+          <property name="text">
+           <string>Exit</string>
           </property>
          </widget>
         </item>
@@ -114,15 +114,18 @@
        </layout>
       </item>
       <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_6"/>
+      </item>
+      <item>
        <widget class="QTableWidget" name="tableWidget">
         <property name="enabled">
-         <bool>false</bool>
+         <bool>true</bool>
         </property>
         <property name="rowCount">
          <number>5</number>
         </property>
         <property name="columnCount">
-         <number>3</number>
+         <number>4</number>
         </property>
         <attribute name="horizontalHeaderMinimumSectionSize">
          <number>18</number>
@@ -147,6 +150,11 @@
         <row/>
         <row/>
         <row/>
+        <column>
+         <property name="text">
+          <string/>
+         </property>
+        </column>
         <column>
          <property name="text">
           <string>Patient_Name</string>
@@ -180,12 +188,19 @@
          </spacer>
         </item>
         <item>
+         <widget class="QPushButton" name="deleteButton">
+          <property name="text">
+           <string>Delete info</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="sure">
           <property name="enabled">
            <bool>true</bool>
           </property>
           <property name="text">
-           <string>Enter Button</string>
+           <string>Modify_info</string>
           </property>
          </widget>
         </item>
@@ -211,15 +226,16 @@
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_3"/>
-        </item>
-        <item>
-         <widget class="QListWidget" name="listWidget"/>
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
+          <item>
+           <widget class="QListWidget" name="listWidget_3"/>
+          </item>
+         </layout>
         </item>
         <item>
          <widget class="QLabel" name="label_4">
           <property name="text">
-           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:12pt;&quot;&gt;Patient_Operation&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:12pt;&quot;&gt;Operation_message&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignCenter</set>
@@ -229,16 +245,12 @@
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_4">
           <item>
-           <widget class="QPushButton" name="deleteButton_2">
-            <property name="text">
-             <string>ADD info</string>
-            </property>
-           </widget>
+           <widget class="QListWidget" name="listWidget"/>
           </item>
           <item>
-           <widget class="QPushButton" name="addRowButton">
-            <property name="text">
-             <string>Delete info</string>
+           <widget class="QScrollBar" name="verticalScrollBar">
+            <property name="orientation">
+             <enum>Vertical</enum>
             </property>
            </widget>
           </item>
