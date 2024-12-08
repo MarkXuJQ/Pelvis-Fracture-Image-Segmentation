@@ -14,9 +14,9 @@ from settings_dialog import SettingsDialog
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        uic.loadUi("system/ui/main_window.ui", self)  # Load the UI from XML file
+        uic.loadUi("ui/main_window.ui", self)  # Load the UI from XML file
         #ui_path = os.path.join(os.path.dirname(__file__), "system/ui/main_window.ui")
-        with open('system/ui/button_style.qss', 'r', encoding='utf-8') as f:
+        with open('ui/button_style.qss', 'r', encoding='utf-8') as f:
             #content = f.read()
             self.setStyleSheet(f.read())
         # 获取表格的引用（从 .ui 文件中获取）
