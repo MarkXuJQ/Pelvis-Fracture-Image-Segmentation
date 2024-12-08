@@ -348,14 +348,3 @@ class CTViewer(QWidget):
         for rep in self.reslice_representations:
             rep.SetWindowLevel(self.window_width, self.window_level)
             rep.GetResliceCursorWidget().Render()
-
-
-# Main execution of the application
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-
-    image_path = r"D:\pelvis-source\001.mha"  # Path to medical image file
-    sitk_image = sitk.ReadImage(image_path)  # Read the image using SimpleITK
-    viewer = CTViewer(sitk_image)  # Create an instance of the viewer with the image
-    viewer.show()  # Display the viewer window
-    sys.exit(app.exec_())  # Execute the application
