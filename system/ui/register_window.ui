@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RegisterWindow</class>
+ <widget class="QMainWindow" name="RegisterWindow">
+  <property name="windowTitle">
+   <string>用户注册</string>
+  </property>
+  <property name="geometry">
+   <rect>
+    <x>100</x>
+    <y>100</y>
+    <width>400</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QLabel" name="register_id_label">
+      <property name="text">
+       <string>ID:</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLineEdit" name="register_id_input"/>
+    </item>
+    <item>
+     <widget class="QLabel" name="register_name_label">
+      <property name="text">
+       <string>姓名:</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLineEdit" name="register_name_input"/>
+    </item>
+    <item>
+     <widget class="QLabel" name="register_password_label">
+      <property name="text">
+       <string>密码:</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLineEdit" name="register_password_input">
+      <property name="echoMode">
+       <enum>QLineEdit::Password</enum>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="user_type_label">
+      <property name="text">
+       <string>用户类型:</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QComboBox" name="user_type_combo">
+      <item>
+       <property name="text">
+        <string>病人</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>医生</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>管理员</string>
+       </property>
+      </item>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="register_phone_label">
+      <property name="text">
+       <string>电话号码:</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLineEdit" name="register_phone_input"/>
+    </item>
+    <item>
+     <widget class="QPushButton" name="submit_register_button">
+      <property name="text">
+       <string>提交注册</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+</ui>
