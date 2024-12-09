@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication
 from main_window import MainWindow
-from system.auth_ui import LoginWindow
+from login_window import LoginWindow
 
 
 def main():
