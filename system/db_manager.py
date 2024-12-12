@@ -4,7 +4,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # 手动建立连接并将其传递给 SQLAlchemy
-connection_string = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=菠啵莓;DATABASE=Pelvis-Fracture-Image-Segmentation;Trusted_Connection=yes"
+'''connection_string = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=菠啵莓;DATABASE=Pelvis-Fracture-Image-Segmentation;Trusted_Connection=yes"
 conn = pyodbc.connect(connection_string)
 engine = create_engine("mssql+pyodbc://", creator=lambda: conn)
 
@@ -68,8 +68,8 @@ def verify_user(user_id, password, user_type):
         return True, "登录成功"
     else:
         return False, "密码错误"
-
-def register_user(user_id, name, password, phone, user_type, specialty=None):
+'''
+'''def register_user(user_id, name, password, phone, user_type, specialty=None):
     if user_type == 'doctor':
         new_user = Doctor(doctor_id=user_id, doctor_name=name, doctor_password=password, phone=phone, specialty=specialty)
     elif user_type == 'patient':
@@ -86,3 +86,4 @@ def register_user(user_id, name, password, phone, user_type, specialty=None):
     except Exception as e:
         session.rollback()
         return False, f"数据库错误: {e}"
+'''

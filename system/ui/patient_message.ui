@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1190</width>
+    <height>779</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Patient Management</string>
+  </property>
+  <widget class="QWidget" name="layoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>30</x>
+     <y>30</y>
+     <width>1141</width>
+     <height>731</height>
+    </rect>
+   </property>
+   <layout class="QHBoxLayout" name="mainLayout">
+    <item>
+     <layout class="QVBoxLayout" name="leftLayout">
+	<property name="leftMargin">
+       <number>20</number> <!-- 设置左侧间距为20 -->
+      </property>
+      <item>
+       <widget class="QLabel" name="avatarLabel">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="pixmap">
+         <pixmap>
+        <file>../image/plan/头像测试.jpg</file>
+    </pixmap>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="backButton">
+        <property name="text">
+         <string>Back</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="verticalSpacer">
+        <property name="orientation">
+         <enum>Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>40</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QVBoxLayout" name="rightLayout">
+      <property name="rightMargin">
+       <number>30</number> <!-- 设置右侧间距为20 -->
+      </property>
+      <property name="bottomMargin">
+       <number>30</number> <!-- 设置底部间距为20 -->
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLabel" name="label">
+          <property name="text">
+           <string>个人信息</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTableWidget" name="personalInfoTable">
+        <property name="rowCount">
+         <number>1</number>
+        </property>
+        <property name="columnCount">
+         <number>4</number>
+        </property>
+        <row/>
+        <column>
+         <property name="text">
+          <string>Name</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Age</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Phone</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>ID Card</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QLabel" name="label_2">
+          <property name="text">
+           <string>病历信息</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_2">
+          <property name="orientation">
+           <enum>Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTableWidget" name="medicalHistoryTable">
+        <property name="rowCount">
+         <number>5</number>
+        </property>
+        <property name="columnCount">
+         <number>3</number>
+        </property>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <row/>
+        <column>
+         <property name="text">
+          <string>Disease</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Hospital</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Visit Date</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

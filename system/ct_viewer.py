@@ -129,7 +129,7 @@ class CTViewer(QWidget):
 
         # Connect slider value changes to update functions with offset calculation
         self.axial_slider.valueChanged.connect(
-            lambda value: self.update_slice_position(2, -value - dims[2] // 2))
+            lambda value: self.update_slice_position(2, value + dims[2] // 2))
         self.coronal_slider.valueChanged.connect(
             lambda value: self.update_slice_position(1, -value))
         self.sagittal_slider.valueChanged.connect(

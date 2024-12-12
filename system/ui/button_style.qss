@@ -43,6 +43,14 @@ QLabel {
     border-radius: 5px;  /* 为标签添加圆角 */
     height: 40px;  /* 设置固定高度 */
 }
+QLabel#avatar_label {
+    width: 60px; /* 设置头像框的宽度 */
+    height: 60px; /* 设置头像框的高度 */
+    border-radius: 50%; /* 设置为圆形 */
+    border: 2px solid #ddd; /* 添加一个边框 */
+    background-color: #f00; /* 设置背景颜色 */
+
+}
 
 /* QTableWidget Styling */
 QTableWidget {
