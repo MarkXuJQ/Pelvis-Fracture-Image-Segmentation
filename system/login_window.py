@@ -1,10 +1,10 @@
-import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QPushButton, QLineEdit
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
 from PyQt5 import uic
-from system.db_manager import verify_user
 import os
-
-from main_window import MainWindow
+from db_manager import verify_user  # 引入数据库验证方法
+from three_UI import DoctorUI
+from three_UI import PatientUI
+from three_UI import AdminUI
 
 
 class LoginWindow(QMainWindow):
@@ -23,11 +23,6 @@ class LoginWindow(QMainWindow):
 
         self.setWindowTitle("用户登录")
         self.setGeometry(100, 100, 400, 300)
-        # Ensure widgets are correctly loaded
-        print(f"控件：{self.findChild(QPushButton, 'login_button')}")
-        print(f"控件：{self.findChild(QPushButton, 'register_button')}")
-        print(f"控件：{self.findChild(QLineEdit, 'user_id_input')}")
-        print(f"控件：{self.findChild(QLineEdit, 'password_input')}")
 
         # 连接按钮事件
         self.login_button.clicked.connect(self.handle_login)
@@ -67,24 +62,31 @@ class LoginWindow(QMainWindow):
 
     def open_doctor_main(self, doctor_id):
         print("进入医生主页面")
-        self.main_window = MainWindow()
+        self.main_window = DoctorUI()  # 调用医生主界面
         self.main_window.show()
         self.close()
 
     def open_patient_main(self, patient_id):
         print("进入病人主页面")
-        self.main_window = MainWindow()
+        self.main_window = PatientUI()  # 调用病人主界面
         self.main_window.show()
         self.close()
 
     def open_admin_main(self, admin_id):
         print("进入管理员主页面")
-        self.main_window = MainWindow()
+        self.main_window = AdminUI()  # 调用管理员主界面
         self.main_window.show()
         self.close()
 
     def show_register_window(self):
+        # 注册窗口逻辑（假设已实现）
         from register_window import RegisterWindow
         self.register_window = RegisterWindow()
         self.register_window.show()
 
+
+# if __name__ == "__main__":
+#     app = QApplication([])
+#     login_window = LoginWindow()
+#     login_window.show()
+#     app.exec_()
