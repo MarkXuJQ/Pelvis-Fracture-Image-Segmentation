@@ -2,7 +2,7 @@ from PyQt5 import uic
 from PyQt5.QtCore import Qt
 #from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox, QToolBar, QTableWidget, QCheckBox, \
-    QTableWidgetItem, QHeaderView, QPushButton, QListWidget, QLabel
+    QTableWidgetItem, QHeaderView, QPushButton, QListWidget, QLabel, QLineEdit, QComboBox
 
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
@@ -23,13 +23,12 @@ class MainWindow(QMainWindow):
         print(f"UI file exists: {os.path.exists(ui_file)}")
         
         uic.loadUi(ui_file, self)
-        with open('ui/button_style.qss', 'r', encoding='utf-8') as f:
-            self.setStyleSheet(f.read())
+        #with open('ui/button_style.qss', 'r', encoding='utf-8') as f:
+         #   self.setStyleSheet(f.read())
         # 获取表格的引用（从 .ui 文件中获取）
         self.tableWidget = self.findChild(QTableWidget, 'tableWidget')
-        self.listWidget = self.findChild(QListWidget, 'listWidget_3')
-        self.patient_manage_window = PatientManageWindow(self.tableWidget,self.listWidget)
-        self.addButton.clicked.connect(self.patient_manage_window.add_patient)
+        self.listWidget = self.findChild(QListWidget, 'listWidget')
+        self.patient_manage_window = PatientManageWindow(self.tableWidget,self.listWidget,False)
 
         self.setWindowTitle("Medical Image Viewer")
         self.setGeometry(0, 0, 1900, 1000)
@@ -75,8 +74,16 @@ class MainWindow(QMainWindow):
         self.exit_action.clicked.connect(self.close)
         self.settings_action.clicked.connect(self.open_settings)
         # Connect Patient Management button
-        self.sure.clicked.connect(self.open_patient_manage)
-        self.deleteButton.clicked.connect(self.patient_manage_window.on_delete_patient_info)
+        self.Details.clicked.connect(self.open_patient_manage)
+        self.deleteButton.clicked.connect(self.delete)
+        self.addButton.clicked.connect(self.add)
+        self.patientID_input= self.findChild(QLineEdit, 'patientID_input')
+        self.gender_input= self.findChild(QComboBox, 'gender_input')
+
+        # 添加查找按钮，点击时筛选病人信息
+        self.searchButton.clicked.connect(self.search)
+        # 添加刷新按钮
+        self.clearButton.clicked.connect(self.clear_table)
         # Status bar
         self.statusBar().showMessage('Ready')
 
@@ -93,53 +100,10 @@ class MainWindow(QMainWindow):
 
         # 最后一列自动填充剩余宽度
         self.tableWidget.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-
-        # 获取当前表格的行数
-        rows = self.tableWidget.rowCount()
-        for row in range(rows):
-            self.tableWidget.setRowHeight(row, 60)  # 设置每一行的高度为40
-            checkBoxItem = QTableWidgetItem()  # 创建一个表格项
-            checkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)  # 设置为可选中且启用
-            checkBoxItem.setCheckState(Qt.Unchecked)  # 设置复选框初始状态为未选中
-
-            # 将复选框添加到表格的第一列
-            self.tableWidget.setItem(row, 0, checkBoxItem)
-            # 在control_str列（假设为第3列）下添加"Upload File"按钮
-            upload_button = QPushButton('Upload_File')
-            upload_button.clicked.connect(self.on_upload_button_clicked)  # 连接按钮点击事件到槽函数
-
-            #self.deleteButton.clicked.connect(self.patient_manage_window.on_delete_patient_info)
-            self.tableWidget.setCellWidget(row, 4, upload_button)  # 在第3列插入按钮
-            self.tableWidget.blockSignals(False)  # 启用信号
-            # 连接itemChanged信号到槽函数
-            self.tableWidget.itemChanged.connect(self.on_checkbox_state_changed)
-        # 设置焦点
-        #self.tableWidget.setFocus()  # 将焦点设置到 QTableWidget
-
-    # 复选框状态改变时的处理函数
-    def on_checkbox_state_changed(self, item):
-        print(2)
-        """复选框状态改变时的处理函数"""
-        if item.column() == 0:  # 只处理第一列（复选框列）
-            row = item.row()
-            check_state = item.checkState()
-            if check_state == Qt.Checked:
-                print(f"Checkbox in row {row} is checked!")
-            elif check_state == Qt.Unchecked:
-                print(f"Checkbox in row {row} is unchecked!")
-
-    # 假设on_upload_button_clicked是处理按钮点击事件的槽函数
-    def on_upload_button_clicked(self):
-        # 获取点击的行
-        button = self.sender()
-        row = self.tableWidget.indexAt(button.pos()).row()  # 获取按钮所在的行
-        print(f"Button clicked at row {row}")
-
-        # 假设文件选择后需要将文件名添加到 listWidget
-        self.patient_manage_window.load_patient()
-
-        # 清除表格中的所有选中状态
-        self.clear_table_selection()
+        # 获取房屋信息并填充到表格
+        patient_list = self.patient_manage_window.get_all_patient_info()
+        self.patient_manage_window.fill_patient_table(patient_list)
+        self.patient_manage_window.create_checkBox()
 
     def clear_table_selection(self):
         # 清除表格中的所有选中状态
@@ -157,30 +121,64 @@ class MainWindow(QMainWindow):
             if isinstance(button, QPushButton):
                 button.setStyleSheet('')  # 清除按钮的选中样式（如果有的话）
 
-    def mousePressEvent(self, event):
-        """
-                重载 mousePressEvent 来检测点击区域
-                """
-        # 如果点击的区域不在 listWidget 内部，则清除选中状态
-        if not self.listWidget.rect().contains(event.pos()):
-            self.listWidget.clearSelection()
 
-        # 如果点击的区域不在 tableWidget 内部，则清除选中状态
-        if not self.tableWidget.rect().contains(event.pos()):
-            self.tableWidget.clearSelection()
+    def search(self):
+        patientID = self.patientID_input.text().strip()  # 获取病人ID
+        gender = self.gender_input.currentText().strip()  # 获取病人性别
+        # 判断是否有输入等级或状态，如果有则筛选
+        if patientID != "" and gender != "请选择":
+            patient_list = self.patient_manage_window.get_patient_by_choose("编号和性别", patientID, gender)
+        elif patientID != "":
+            print(12)
+            patient_list = self.patient_manage_window.get_patient_by_choose("编号", patientID)
+        elif gender != "请选择":
+            print("服了")
+            patient_list = self.patient_manage_window.get_patient_by_choose("性别", gender)
+        else:
+            # 如果没有输入任何内容，显示所有房屋信息
+            patient_list = self.patient_manage_window.get_all_patient_info()
 
-        # 如果点击的区域不在删除按钮内部，则清除选中状态
-        if not self.deleteButton.rect().contains(event.pos()):
-            self.listWidget.clearSelection()
-            self.tableWidget.clearSelection()
+        # 更新表格数据
+        self.patient_manage_window.fill_patient_table(patient_list)
+    def clear_table(self):
+        self.patientID_input.clear()  # 清空病人ID输入框
+        self.gender_input.setCurrentIndex(0)
+        self.patient_manage_window.refresh_table()
 
-        super().mousePressEvent(event)  # 保证其他事件仍然能正常处理
+    def add(self):
+        self.patient_manage_window = PatientManageWindow(self.tableWidget, self.listWidget, False)
+        self.patient_manage_window.add_patient()
+    def delete(self):
+        self.patient_manage_window = PatientManageWindow(self.tableWidget, self.listWidget, False)
+        self.patient_manage_window.delete_patient_info()
 
     def open_patient_manage(self):
-        # Create and show the Patient Management window
-        self.patient_manage_window = PatientManageWindow(self.tableWidget,self.listWidget)
-        self.patient_manage_window.show()
+        # 获取选中的复选框的行
+        selected_rows = []
+        for row in range(self.tableWidget.rowCount()):
+            checkbox_item = self.tableWidget.item(row, 0)  # 复选框在表格的第一列（索引为0）
+            if checkbox_item and checkbox_item.checkState() == Qt.Checked:
+                selected_rows.append(row)
 
+        # 如果选中的复选框只有一个，打开病人管理界面
+        if len(selected_rows) == 1:
+            self.patient_manage_window = PatientManageWindow(self.tableWidget, self.listWidget,True)
+            #self.patient_manage_window.is_from_open_patient = True  # 设置标识符为 True
+            self.patient_manage_window.show()
+        else:
+            # 如果没有选中或选中多行，弹出提示
+            QMessageBox.warning(self, "Warning", "Please select exactly one patient.")
+
+        # 取消其他复选框选中状态，确保只有一个被选中
+        self.reset_checkbox_state()
+
+    def reset_checkbox_state(self):
+        # 取消所有复选框的选中状态，确保只有一个被选中
+        for row in range(self.tableWidget.rowCount()):
+            checkbox_item = self.tableWidget.item(row, 0)  # 复选框在表格的第一列
+            if checkbox_item.checkState() == Qt.Checked:
+                continue  # 跳过已选中的复选框
+            checkbox_item.setCheckState(Qt.Unchecked)
     def open_image(self):
         # Open file dialog to select image
         options = QFileDialog.Options()

@@ -123,7 +123,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QComboBox" name="comboBox_3"/>
+         <widget class="QLineEdit" name="patientID_input"/>
         </item>
         <item>
          <widget class="QLabel" name="label_5">
@@ -133,7 +133,12 @@
          </widget>
         </item>
         <item>
-         <widget class="QComboBox" name="comboBox_2">
+         <widget class="QComboBox" name="gender_input">
+          <item>
+           <property name="text">
+            <string>请选择</string>
+           </property>
+          </item>
           <item>
            <property name="text">
             <string>F</string>
@@ -142,27 +147,6 @@
           <item>
            <property name="text">
             <string>M</string>
-           </property>
-          </item>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_3">
-          <property name="text">
-           <string>Status</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="comboBox">
-          <item>
-           <property name="text">
-            <string>Y</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>N</string>
            </property>
           </item>
          </widget>
@@ -181,7 +165,7 @@
          </spacer>
         </item>
         <item>
-         <widget class="QPushButton" name="pushButton">
+         <widget class="QPushButton" name="searchButton">
           <property name="text">
            <string>Search</string>
           </property>
@@ -202,7 +186,7 @@
          <bool>true</bool>
         </property>
         <property name="rowCount">
-         <number>5</number>
+         <number>0</number>
         </property>
         <property name="columnCount">
          <number>5</number>
@@ -237,17 +221,17 @@
         </column>
         <column>
          <property name="text">
-          <string>Patient_Name</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
           <string>Patient_ID</string>
          </property>
         </column>
         <column>
          <property name="text">
-          <string>Status</string>
+          <string>Patient_Name</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Patient_Gender</string>
          </property>
         </column>
         <column>
@@ -273,6 +257,13 @@
          </spacer>
         </item>
         <item>
+         <widget class="QPushButton" name="pushButton">
+          <property name="text">
+           <string>Diag_Record</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="deleteButton">
           <property name="text">
            <string>Delete</string>
@@ -280,7 +271,7 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="sure">
+         <widget class="QPushButton" name="Details">
           <property name="enabled">
            <bool>true</bool>
           </property>
@@ -296,26 +287,9 @@
     <item>
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
-       <widget class="QLabel" name="label_2">
-        <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:12pt;&quot;&gt;Patient_info&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-        </property>
-        <property name="textFormat">
-         <enum>AutoText</enum>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item>
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_3">
-          <item>
-           <widget class="QListWidget" name="listWidget_3"/>
-          </item>
-         </layout>
+         <layout class="QHBoxLayout" name="horizontalLayout_3"/>
         </item>
         <item>
          <widget class="QLabel" name="label_4">
