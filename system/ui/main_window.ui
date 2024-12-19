@@ -141,12 +141,17 @@
           </item>
           <item>
            <property name="text">
-            <string>F</string>
+            <string>male</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>M</string>
+            <string>female</string>
+           </property>
+          </item>
+	   <item>
+           <property name="text">
+            <string>other</string>
            </property>
           </item>
          </widget>

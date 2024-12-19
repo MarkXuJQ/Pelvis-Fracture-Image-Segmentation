@@ -1,13 +1,13 @@
 import sys
-'''from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QPushButton, QLineEdit
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QPushButton, QLineEdit
 from PyQt5 import uic
-from system.db_manager import verify_user
+#from system.db_manager import verify_user
 import os
 
 from main_window import MainWindow
 
 
-class LoginWindow(QMainWindow):
+'''class LoginWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         ui_file_path = os.path.join(os.path.dirname(__file__), 'ui', 'login_window.ui')
@@ -86,5 +86,5 @@ class LoginWindow(QMainWindow):
     def show_register_window(self):
         from register_window import RegisterWindow
         self.register_window = RegisterWindow()
-        self.register_window.show()
-'''
+        self.register_window.show()'''
+

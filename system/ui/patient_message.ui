@@ -235,7 +235,7 @@
          <number>5</number>
         </property>
         <property name="columnCount">
-         <number>7</number>
+         <number>5</number>
         </property>
         <row/>
         <row/>
@@ -249,17 +249,7 @@
         </column>
         <column>
          <property name="text">
-          <string>Diagnosis Hospital</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
           <string>Fracture Location</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Fracture Type</string>
          </property>
         </column>
         <column>

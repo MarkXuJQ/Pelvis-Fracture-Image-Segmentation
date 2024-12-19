@@ -279,26 +279,6 @@ class MainWindow(QMainWindow):
         else:
             # For 2D images
             sitk.WriteImage(image, save_path) 
-            
-    # def generate_model(self):
-    #     if hasattr(self.viewer, 'generate_and_display_model'):
-    #         self.viewer.render_model = True
-    #         self.viewer.generate_and_display_model()
-    #     else:
-    #         QMessageBox.warning(self, "Not Available", "Model generation is not available for this image.")
-
-    # def create_crosshairs(self):
-    #     if self.viewer is None:
-    #         QMessageBox.warning(self, "Not Available", "The image viewer is not initialized.")
-    #         return
-    #
-    #     if hasattr(self.viewer, 'create_crosshairs'):
-    #         try:
-    #             self.viewer.create_crosshairs()
-    #         except Exception as e:
-    #             QMessageBox.warning(self, "Error", f"An error occurred while creating crosshairs: {str(e)}")
-    #     else:
-    #         QMessageBox.warning(self, "Not Available", "Crosshair functionality is not available for this image viewer.")
 
     def open_settings(self):
         dialog = SettingsDialog(self, render_on_open=self.render_on_open)

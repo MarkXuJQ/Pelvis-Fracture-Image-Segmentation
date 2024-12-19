@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout,
 import sys
 
 from requests import Session
-from db_manager import Patient, FractureHistories
+from db_manager import patients, fracturehistories
 import sys
 from sqlalchemy import Column, String
 import pyodbc
@@ -20,10 +20,14 @@ from PyQt5.QtWidgets import QComboBox, QLineEdit, QFormLayout, QErrorMessage
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# 数据库连接设置
-connection_string = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=LAPTOP-5NGQ4BFB;DATABASE=Pelvis;Trusted_Connection=yes"
-conn = pyodbc.connect(connection_string)
-engine = create_engine("mssql+pyodbc://", creator=lambda: conn)
+# # 数据库连接设置
+# connection_string = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=LAPTOP-5NGQ4BFB;DATABASE=Pelvis;Trusted_Connection=yes"
+# conn = pyodbc.connect(connection_string)
+# engine = create_engine("mssql+pyodbc://", creator=lambda: conn)
+connection_string = "mysql+pymysql://root:hys12138@localhost:3306/pelvis"
+
+# 创建 SQLAlchemy 引擎
+engine = create_engine(connection_string)
 
 # 测试 SQLAlchemy 连接
 try:
@@ -31,6 +35,7 @@ try:
         print("SQLAlchemy 连接成功")
 except Exception as e:
     print("SQLAlchemy 连接失败:", e)
+
 
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -49,7 +54,7 @@ class AddPatientDialog(QDialog):
         self.name_input = QLineEdit(self)
         self.age_input = QLineEdit(self)
         self.gender_input = QComboBox(self)
-        self.gender_input.addItems(["F", "M"])  # 男、女
+        self.gender_input.addItems(['male', 'female', 'other'])  # 男、女
         self.id_number_input = QLineEdit(self)
         #self.disease_input = QLineEdit(self)
         self.phone_input = QLineEdit(self)
@@ -140,14 +145,14 @@ class AddPatientDialog(QDialog):
         new_patient = {
             "patient_id": patient_id,
             "patient_name": name,
-            "patient_age": age,
-            "patient_gender": gender,
-            #"disease": disease,
-            "phone": phone,
+            "age": age,
+            "gender": gender,
+            "phone_number": phone,
             "contact_person": contact_person,
             "contact_phone": contact_phone,
-            "id_number": id_number,
-            "date_of_birth": birth_date_str  # 使用合成的出生日期
+            "id_card": id_number,
+            "date_of_birth": birth_date_str,  # 使用合成的出生日期
+            "password_hash":1234
         }
 
         # 插入新病人信息到数据库
@@ -161,17 +166,17 @@ class AddPatientDialog(QDialog):
         session = Session()
         try:
             # 创建新的病人对象，插入数据库
-            new_patient = Patient(
+            new_patient = patients(
                 patient_id=patient_info["patient_id"],
                 patient_name=patient_info["patient_name"],
-                patient_age=patient_info["patient_age"],
-                patient_gender=patient_info["patient_gender"],
-                #disease=patient_info["disease"],
-                phone=patient_info["phone"],
+                age=patient_info["age"],
+                gender=patient_info["gender"],
+                phone_number=patient_info["phone_number"],
                 contact_person=patient_info["contact_person"],
                 contact_phone=patient_info["contact_phone"],  # 紧急联系人电话
-                id_number=patient_info["id_number"],
-                date_of_birth=patient_info["date_of_birth"]
+                id_card=patient_info["id_card"],
+                date_of_birth=patient_info["date_of_birth"],
+                password_hash=patient_info["password_hash"]
             )
             session.add(new_patient)
             session.commit()  # 提交事务
@@ -246,20 +251,20 @@ class PatientManageWindow(QMainWindow):
         print(choose,choice1)
         try:
             if choose == "编号":
-                patient_info = session.query(Patient).filter(Patient.patient_id == choice1).all()
+                patient_info = session.query(patients).filter(patients.patient_id == choice1).all()
 
             elif choose == "性别":
                 print(6)
                 print(type(choice1), choice1)  # 输出查询传入的值
-                print(type(Patient.patient_gender), Patient.patient_gender)  # 输出数据库中读取的性别字段
+                print(type(patients.gender), patients.gender)  # 输出数据库中读取的性别字段
 
                 # 查询病人信息，根据病人性别进行筛选
-                patient_info = session.query(Patient).filter(Patient.patient_gender == choice1).all()
+                patient_info = session.query(patients).filter(patients.gender == choice1).all()
             elif choose == "编号和性别":
                 if choice1.isdigit():  # 判断病人ID是否为数字
                     # 查询病人信息，根据病人ID和性别进行筛选
-                    patient_info = session.query(Patient).filter(Patient.patient_id == choice1,
-                                                                 Patient.patient_gender == choice2).all()
+                    patient_info = session.query(patients).filter(patients.patient_id == choice1,
+                                                                 patients.gender == choice2).all()
                 else:
                     print("Invalid patient ID")
                     return []
@@ -269,7 +274,7 @@ class PatientManageWindow(QMainWindow):
                 patient_list.append({
                     "patient_id": patient.patient_id,
                     "patient_name": patient.patient_name,
-                    "patient_gender": patient.patient_gender,
+                    "gender": patient.gender,
                 })
 
             return patient_list
@@ -288,12 +293,12 @@ class PatientManageWindow(QMainWindow):
         for row, patient in enumerate(patient_list):
             self.tableWidget.setItem(row, 1, QTableWidgetItem(str(patient["patient_id"])))
             self.tableWidget.setItem(row, 2, QTableWidgetItem(str(patient["patient_name"])))
-            self.tableWidget.setItem(row, 3, QTableWidgetItem(str(patient["patient_gender"])))
+            self.tableWidget.setItem(row, 3, QTableWidgetItem(str(patient["gender"])))
 
     def get_all_patient_info(self):
         session = Session()  # 获取数据库会话
         try:
-            patient_info = session.query(Patient).all()
+            patient_info = session.query(patients).all()
 
             # 将病人信息转换为字典列表，以便后续在表格中显示
             patient_list = []
@@ -301,12 +306,12 @@ class PatientManageWindow(QMainWindow):
                 patient_list.append({
                     "patient_id": patient.patient_id,
                     "patient_name": patient.patient_name,
-                    "patient_age": patient.patient_age,
-                    "patient_gender": patient.patient_gender,
-                    "id_number": patient.id_number,
+                    "age": patient.age,
+                    "gender": patient.gender,
+                    "id_card": patient.id_card,
                     "date_of_birth": patient.date_of_birth,
-                    "phone": patient.phone,
-                    "patient_password": patient.patient_password,
+                    "phone_number": patient.phone_number,
+                    "password_hash": patient.password_hash,
                     "contact_person": patient.contact_person,
                     "contact_phone": patient.contact_phone,
 
@@ -336,7 +341,7 @@ class PatientManageWindow(QMainWindow):
         session = Session()  # 获取数据库会话
         print("?")
         # 从数据库获取病人的个人信息
-        patient_info = session.query(Patient).filter_by(patient_id=patient_id).first()
+        patient_info = session.query(patients).filter_by(patient_id=patient_id).first()
         print("?")
         #patient_fracture_info = session.query(FractureHistories).filter_by(patient_id=patient_id).all()
         print("?")
@@ -347,10 +352,10 @@ class PatientManageWindow(QMainWindow):
             print("wer")
             # 假设你在 .ui 文件中已经设置了文本框，比如 nameLineEdit, ageLineEdit 等
             self.nameLineEdit.setText(patient_info.patient_name)  # 设置病人的名字
-            self.ageLineEdit.setText(str(patient_info.patient_age))  # 设置病人的年龄
-            self.genderLineEdit.setText(patient_info.patient_gender)  # 设置病人的性别
-            self.phoneLineEdit.setText(str(patient_info.phone))  # 设置病人的电话
-            self.idLineEdit.setText(patient_info.id_number)  # 设置病人的id number
+            self.ageLineEdit.setText(str(patient_info.age))  # 设置病人的年龄
+            self.genderLineEdit.setText(patient_info.gender)  # 设置病人的性别
+            self.phoneLineEdit.setText(str(patient_info.phone_number))  # 设置病人的电话
+            self.idLineEdit.setText(patient_info.id_card)  # 设置病人的id number
             self.birthdayLineEdit.setText(str(patient_info.date_of_birth))  # 设置病人的生日
             self.contactPersonLineEdit.setText(patient_info.contact_person)  # 设置紧急联系人
             self.contactPhoneLineEdit.setText(patient_info.contact_phone)  # 设置紧急联系电话
@@ -364,19 +369,17 @@ class PatientManageWindow(QMainWindow):
             self.contactPersonLineEdit.setReadOnly(True)
             self.contactPhoneLineEdit.setReadOnly(True)
 
-            print("jium")
-
             # 调整每一列的宽度
-            self.medicalHistorytable.setColumnWidth(0, 150)  # 设置第一列宽度为100
-            self.medicalHistorytable.setColumnWidth(1, 200)  # 设置第二列宽度为200
-            self.medicalHistorytable.setColumnWidth(2, 180)  # 设置第三列宽度为150
-            self.medicalHistorytable.setColumnWidth(3, 150)  # 设置第三列宽度为150
-            self.medicalHistorytable.setColumnWidth(4, 150)  # 设置第三列宽度为150
-            self.medicalHistorytable.setColumnWidth(5, 200)  # 设置第三列宽度为150
+            #self.medicalHistorytable.setColumnWidth(0, 150)  # 设置第一列宽度为100
+            self.medicalHistorytable.setColumnWidth(0, 150)  # 设置第二列宽度为200
+            #self.medicalHistorytable.setColumnWidth(1, 180)  # 设置第三列宽度为150
+            self.medicalHistorytable.setColumnWidth(1, 180)  # 设置第三列宽度为150
+            self.medicalHistorytable.setColumnWidth(2, 150)  # 设置第三列宽度为150
+            self.medicalHistorytable.setColumnWidth(3, 200)  # 设置第三列宽度为150
             # 最后一列自动填充剩余宽度
-            self.medicalHistorytable.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+            self.medicalHistorytable.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
             # 使用 relationship 直接访问病人的骨折历史
-            patient_fracture_info = patient_info.FractureHistories
+            patient_fracture_info = patient_info.fracturehistories
             if patient_fracture_info:
                 # 按 fracture_date 降序排序（从最新到最晚）
                 patient_fracture_info = sorted(patient_fracture_info, key=lambda fracture: fracture.fracture_date,
@@ -386,16 +389,16 @@ class PatientManageWindow(QMainWindow):
                 self.medicalHistorytable.setRowCount(len(patient_fracture_info))  # 设置行数为骨折记录数
                 for row, fracture in enumerate(patient_fracture_info):
                     self.medicalHistorytable.setItem(row, 0, QTableWidgetItem(str(fracture.fracture_date)))  # 骨折日期
-                    self.medicalHistorytable.setItem(row, 1, QTableWidgetItem(fracture.diagnosis_hospital))
-                    self.medicalHistorytable.setItem(row, 2, QTableWidgetItem(fracture.fracture_location))  # 骨折部位
-                    self.medicalHistorytable.setItem(row, 3, QTableWidgetItem(fracture.fracture_type))  # 骨折类型
-                    self.medicalHistorytable.setItem(row, 4, QTableWidgetItem(fracture.severity_level))  # 骨折严重程度
-                    self.medicalHistorytable.setItem(row, 5, QTableWidgetItem(str(fracture.diagnosis_details)))  # 诊断描述
+                    #self.medicalHistorytable.setItem(row, 1, QTableWidgetItem(fracture.diagnosis_hospital))
+                    self.medicalHistorytable.setItem(row, 1, QTableWidgetItem(str(fracture.fracture_location)))  # 骨折部位
+                    #self.medicalHistorytable.setItem(row, 2, QTableWidgetItem(fracture.fracture_type))  # 骨折类型
+                    self.medicalHistorytable.setItem(row, 2, QTableWidgetItem(str(fracture.severity_level)))  # 骨折严重程度
+                    self.medicalHistorytable.setItem(row, 3, QTableWidgetItem(str(fracture.diagnosis_details)))  # 诊断描述
 
                     # 创建按钮
                     view_image_button = QPushButton("查看图像")
                     # 将按钮添加到表格的最后一列
-                    self.medicalHistorytable.setCellWidget(row, 6, view_image_button)
+                    self.medicalHistorytable.setCellWidget(row, 4, view_image_button)
 
                     # 为按钮设置点击事件
                     #view_image_button.clicked.connect(lambda checked, f=fracture: self.view_fracture_image(f))
@@ -435,7 +438,7 @@ class PatientManageWindow(QMainWindow):
                 patientID = self.tableWidget.item(row, 1).text()  # 获取当前行的病人ID
                 session = Session()  # 获取数据库会话
                 try:
-                    patient_to_delete = session.query(Patient).filter_by(patient_id=patientID).first()
+                    patient_to_delete = session.query(patients).filter_by(patient_id=patientID).first()
                     print(patient_to_delete)
                     if patient_to_delete:
                         #insert_maintenance_record(self.user_id, housingID, f"删除房屋{housingID}")
