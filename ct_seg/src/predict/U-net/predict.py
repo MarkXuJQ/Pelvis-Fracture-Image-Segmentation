@@ -43,7 +43,7 @@ def predict_single_scan(model_path, input_image_path, output_path=None, patch_si
         print(f"Error loading model: {e}")
         return None
     
-    # 加���和预处理图像
+    # 加载和预处理图像
     try:
         image = sitk.ReadImage(input_image_path)
         image_array = sitk.GetArrayFromImage(image)
@@ -204,7 +204,7 @@ def predict_single_scan(model_path, input_image_path, output_path=None, patch_si
 
 if __name__ == "__main__":
     # 设置路径
-    model_path = r'ct_seg\notebooks\best_model_loss.pth'
+    model_path = r'ct_seg\notebooks\best_model_dice.pth'
     input_path = r'ct_seg\data\PENGWIN_CT_train_images\051.mha'
     output_path = r'ct_seg\data\results\U_net\segmentation.mha'
     

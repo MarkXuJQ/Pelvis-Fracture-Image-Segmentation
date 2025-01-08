@@ -1,7 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QPushButton, QLineEdit
 from PyQt5 import uic
-from system.db_manager import verify_user
+from db_manager import verify_user
 import os
 
 from main_window import MainWindow
@@ -12,22 +12,37 @@ class LoginWindow(QMainWindow):
         super().__init__()
         ui_file_path = os.path.join(os.path.dirname(__file__), 'ui', 'login_window.ui')
 
-        # 检查路径是否正确
-        print(f"UI 文件路径：{ui_file_path}")
-
         try:
             uic.loadUi(ui_file_path, self)
         except FileNotFoundError as e:
             print(f"错误：{e}")
             exit()
 
+        # 设置窗口基本属性
         self.setWindowTitle("用户登录")
         self.setGeometry(100, 100, 400, 300)
-        # Ensure widgets are correctly loaded
-        print(f"控件：{self.findChild(QPushButton, 'login_button')}")
-        print(f"控件：{self.findChild(QPushButton, 'register_button')}")
-        print(f"控件：{self.findChild(QLineEdit, 'user_id_input')}")
-        print(f"控件：{self.findChild(QLineEdit, 'password_input')}")
+
+        # 移除可能导致问题的样式表
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 5px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QLineEdit {
+                padding: 5px;
+                border: 1px solid #BBBBBB;
+                border-radius: 3px;
+            }
+            QRadioButton {
+                spacing: 5px;
+            }
+        """)
 
         # 连接按钮事件
         self.login_button.clicked.connect(self.handle_login)

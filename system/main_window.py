@@ -16,15 +16,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         current_dir = os.path.dirname(os.path.abspath(__file__))
         ui_file = os.path.join(current_dir, "ui", "main_window.ui")
-        
-        # 调试输出
-        print(f"Current directory: {current_dir}")
-        print(f"UI file path: {ui_file}")
-        print(f"UI file exists: {os.path.exists(ui_file)}")
+        style_file = os.path.join(current_dir, "ui", "button_style.qss")
         
         uic.loadUi(ui_file, self)
-        with open('ui/button_style.qss', 'r', encoding='utf-8') as f:
-            #content = f.read()
+        with open(style_file, 'r', encoding='utf-8') as f:
             self.setStyleSheet(f.read())
         # 获取表格的引用（从 .ui 文件中获取）
         self.tableWidget = self.findChild(QTableWidget, 'tableWidget')

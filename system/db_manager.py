@@ -1,88 +1,142 @@
-import pyodbc
-from sqlalchemy import Column, Integer, String, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+import pymysql
+from pymysql import Error
+from db_config import db_config
+import logging
 
-# 手动建立连接并将其传递给 SQLAlchemy
-connection_string = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=菠啵莓;DATABASE=Pelvis-Fracture-Image-Segmentation;Trusted_Connection=yes"
-conn = pyodbc.connect(connection_string)
-engine = create_engine("mssql+pyodbc://", creator=lambda: conn)
+# 设置日志记录
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
-# 测试 SQLAlchemy 连接
-try:
-    with engine.connect() as connection:
-        print("SQLAlchemy 连接成功")
-except Exception as e:
-    print("SQLAlchemy 连接失败:", e)
+def get_connection():
+    try:
+        connection = pymysql.connect(
+            host=db_config['host'],
+            user=db_config['user'],
+            password=db_config['password'],
+            database=db_config['database'],
+            charset=db_config['charset'],
+            port=db_config['port']
+        )
+        logger.info("Successfully connected to MySQL database")
+        return connection
+    except Error as e:
+        logger.error(f"Error connecting to MySQL: {e}")
+        return None
 
-Session = sessionmaker(bind=engine)
-session = Session()
-
-Base = declarative_base()
-
-# 医生表
-class Doctor(Base):
-    __tablename__ = 'doctors'
-    doctor_id = Column(String(20), primary_key=True)
-    doctor_name = Column(String(50))
-    doctor_password = Column(String(20))
-    phone = Column(String(11))
-    specialty = Column(String(50))
-
-# 病人表
-class Patient(Base):
-    __tablename__ = 'patients'
-    patient_id = Column(String(20), primary_key=True)
-    patient_name = Column(String(50))
-    patient_password = Column(String(20))
-    phone = Column(String(11))
-
-# 管理员表
-class Admin(Base):
-    __tablename__ = 'admins'
-    admin_id = Column(String(20), primary_key=True)
-    admin_name = Column(String(50))
-    admin_password = Column(String(20))
-    phone = Column(String(11))
 def verify_user(user_id, password, user_type):
-    if user_type == 'doctor':
-        user = session.query(Doctor).filter_by(doctor_id=user_id).first()
-    elif user_type == 'patient':
-        user = session.query(Patient).filter_by(patient_id=user_id).first()
-    elif user_type == 'admin':
-        user = session.query(Admin).filter_by(admin_id=user_id).first()
-    else:
-        return False, "无效的用户类型"
-
-    if not user:
-        return False, "用户不存在"
-
-    if user_type == 'doctor':
-        is_correct_password = user.doctor_password == password
-    elif user_type == 'patient':
-        is_correct_password = user.patient_password == password
-    else:  # admin
-        is_correct_password = user.admin_password == password
-
-    if is_correct_password:
-        return True, "登录成功"
-    else:
-        return False, "密码错误"
+    try:
+        connection = get_connection()
+        if not connection:
+            logger.error("Failed to establish database connection")
+            return False, "数据库连接失败"
+        
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+        query = f"SELECT * FROM {user_type}s WHERE id = %s AND password = %s"
+        logger.debug(f"Executing query: {query} with params: {user_id}, {password}")
+        cursor.execute(query, (user_id, password))
+        
+        user = cursor.fetchone()
+        
+        cursor.close()
+        connection.close()
+        
+        if user:
+            logger.info(f"User {user_id} successfully logged in")
+            return True, "登录成功！"
+        logger.warning(f"Failed login attempt for user {user_id}")
+        return False, "用户名或密码错误"
+        
+    except Error as e:
+        logger.error(f"Database error: {str(e)}")
+        return False, "数据库错误"
 
 def register_user(user_id, name, password, phone, user_type, specialty=None):
-    if user_type == 'doctor':
-        new_user = Doctor(doctor_id=user_id, doctor_name=name, doctor_password=password, phone=phone, specialty=specialty)
-    elif user_type == 'patient':
-        new_user = Patient(patient_id=user_id, patient_name=name, patient_password=password, phone=phone)
-    elif user_type == 'admin':
-        new_user = Admin(admin_id=user_id, admin_name=name, admin_password=password, phone=phone)
-    else:
-        return False, "无效的用户类型"
-
     try:
-        session.add(new_user)
-        session.commit()
+        connection = get_connection()
+        if not connection:
+            return False, "数据库连接失败"
+            
+        cursor = connection.cursor()
+        
+        if user_type == 'doctor':
+            query = """INSERT INTO doctors 
+                    (id, name, password, phone, specialty) 
+                    VALUES (%s, %s, %s, %s, %s)"""
+            values = (user_id, name, password, phone, specialty)
+        else:
+            query = f"""INSERT INTO {user_type}s 
+                    (id, name, password, phone) 
+                    VALUES (%s, %s, %s, %s)"""
+            values = (user_id, name, password, phone)
+            
+        cursor.execute(query, values)
+        connection.commit()
+        
+        cursor.close()
+        connection.close()
+        
         return True, "注册成功"
-    except Exception as e:
-        session.rollback()
-        return False, f"数据库错误: {e}"
+        
+    except Error as e:
+        print(f"数据库错误: {str(e)}")
+        return False, f"注册失败: {str(e)}"
+
+# MySQL 数据库初始化函数
+def init_database():
+    try:
+        # 首先创建数据库连接（不指定数据库名）
+        conn_params = db_config.copy()
+        conn_params.pop('database')  # 移除数据库名称
+        
+        connection = pymysql.connect(**conn_params)
+        cursor = connection.cursor()
+        
+        # 创建数据库
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_config['database']} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+        cursor.execute(f"USE {db_config['database']}")
+        
+        # 创建医生表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS doctors (
+                id VARCHAR(20) PRIMARY KEY,
+                name VARCHAR(50) NOT NULL,
+                password VARCHAR(100) NOT NULL,
+                phone VARCHAR(20),
+                specialty VARCHAR(50)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        """)
+        
+        # 创建病人表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS patients (
+                id VARCHAR(20) PRIMARY KEY,
+                name VARCHAR(50) NOT NULL,
+                password VARCHAR(100) NOT NULL,
+                phone VARCHAR(20)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        """)
+        
+        # 创建管理员表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                id VARCHAR(20) PRIMARY KEY,
+                name VARCHAR(50) NOT NULL,
+                password VARCHAR(100) NOT NULL,
+                phone VARCHAR(20)
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        """)
+        
+        connection.commit()
+        cursor.close()
+        connection.close()
+        
+        logger.info("Database initialized successfully")
+        return True
+        
+    except Error as e:
+        logger.error(f"Error initializing database: {e}")
+        return False
+
+# 在程序启动时初始化数据库
+if __name__ == "__main__":
+    init_database()
