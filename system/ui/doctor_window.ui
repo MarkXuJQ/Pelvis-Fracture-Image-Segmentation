@@ -1,0 +1,240 @@
+<ui version="4.0">
+ <class>DoctorUI</class>
+ <widget class="QMainWindow" name="DoctorUI">
+  <property name="geometry">
+   <rect>
+    <x>100</x>
+    <y>100</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>医生界面</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="mainLayout">
+    <!-- 顶部导航栏 -->
+    <item>
+     <layout class="QHBoxLayout" name="topLayout">
+      <item>
+       <widget class="QPushButton" name="settingsButton">
+        <property name="text">
+         <string>设置</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="viewButton">
+        <property name="text">
+         <string>视图</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </item>
+    <!-- 主分割器 -->
+    <item>
+     <widget class="QSplitter" name="mainSplitter">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <!-- 左侧 -->
+      <widget class="QWidget" name="leftWidget">
+       <layout class="QVBoxLayout" name="leftLayout">
+        <item>
+         <widget class="QListWidget" name="patientList"/>
+        </item>
+        <item>
+         <widget class="QLabel" name="messageLabel">
+          <property name="text">
+           <string>消息提醒</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QListWidget" name="messageList"/>
+        </item>
+       </layout>
+      </widget>
+      <!-- 右侧分割器 -->
+      <widget class="QSplitter" name="rightSplitter">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <!-- 上部表格 -->
+       <widget class="QWidget" name="tableWidgetContainer">
+        <layout class="QVBoxLayout" name="tableLayout">
+         <item>
+          <widget class="QLineEdit" name="searchBox">
+           <property name="placeholderText">
+            <string>搜索框</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QTableWidget" name="tableWidget">
+           <property name="columnCount">
+            <number>4</number>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <column>
+            <property name="text">
+             <string>ID</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>姓名</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>看病日期</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>备注信息</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="pageControlsLayout">
+           <item>
+            <spacer name="leftSpacer">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="firstPageButton">
+             <property name="text">
+              <string>|&lt;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="previousPageButton">
+             <property name="text">
+              <string>&lt;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="pageSpacerLeft">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeType">
+              <enum>QSizePolicy::Expanding</enum>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QLabel" name="pageLabel">
+             <property name="text">
+              <string>1/1</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="pageSpacerRight">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeType">
+              <enum>QSizePolicy::Expanding</enum>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="nextPageButton">
+             <property name="text">
+              <string>&gt;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="lastPageButton">
+             <property name="text">
+              <string>&gt;|</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="rightSpacer">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+       <!-- 下部详情 -->
+       <widget class="QFrame" name="detailsFrame">
+        <layout class="QHBoxLayout" name="detailsLayout">
+         <item>
+          <layout class="QVBoxLayout" name="patientInfoLayout">
+           <item>
+            <widget class="QLabel" name="patientInfoLabel">
+             <property name="text">
+              <string></string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QFrame" name="divider">
+           <property name="frameShape">
+            <enum>QFrame::VLine</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QVBoxLayout" name="patientHistoryLayout">
+           <item>
+            <widget class="QLabel" name="patientHistoryLabel">
+             <property name="text">
+              <string></string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+
+           </item>
+          </layout>
+
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

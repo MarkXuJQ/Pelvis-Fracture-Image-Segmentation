@@ -20,25 +20,15 @@ from PyQt5.QtWidgets import QComboBox, QLineEdit, QFormLayout, QErrorMessage
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# # 数据库连接设置
-# connection_string = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=LAPTOP-5NGQ4BFB;DATABASE=Pelvis;Trusted_Connection=yes"
-# conn = pyodbc.connect(connection_string)
-# engine = create_engine("mssql+pyodbc://", creator=lambda: conn)
-connection_string = "mysql+pymysql://root:hys12138@localhost:3306/pelvis"
+import pymysql
+from pymysql import Error
+from db_config import db_config
 
-# 创建 SQLAlchemy 引擎
-engine = create_engine(connection_string)
-
-# 测试 SQLAlchemy 连接
-try:
-    with engine.connect() as connection:
-        print("SQLAlchemy 连接成功")
-except Exception as e:
-    print("SQLAlchemy 连接失败:", e)
-
-
+# 创建数据库连接
+engine = create_engine(f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
 Session = sessionmaker(bind=engine)
 session = Session()
+
 
 
 class AddPatientDialog(QDialog):
@@ -200,8 +190,7 @@ class PatientManageWindow(QMainWindow):
         print(f"UI file exists: {os.path.exists(ui_file)}")
 
         uic.loadUi(ui_file, self)
-        #with open('ui/button_style.qss', 'r', encoding='utf-8') as f:
-         #   self.setStyleSheet(f.read())
+
         self.setWindowTitle("Patient Management")
         self.setGeometry(0, 0, 1400, 800)
         self.tableWidget=table
