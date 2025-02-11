@@ -73,16 +73,34 @@
        <widget class="QWidget" name="tableWidgetContainer">
         <layout class="QVBoxLayout" name="tableLayout">
          <item>
-          <widget class="QLineEdit" name="searchBox">
-           <property name="placeholderText">
-            <string>搜索框</string>
-           </property>
-          </widget>
+          <layout class="QHBoxLayout">
+           <item>
+            <widget class="QLineEdit" name="searchBox">
+             <property name="placeholderText">
+              <string>搜索框</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="searchButton">
+             <property name="text">
+              <string>搜索</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="cancelButton">
+             <property name="text">
+              <string>取消</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
          </item>
          <item>
           <widget class="QTableWidget" name="tableWidget">
            <property name="columnCount">
-            <number>4</number>
+            <number>5</number>
            </property>
            <property name="alternatingRowColors">
             <bool>true</bool>

@@ -7,7 +7,7 @@ from ct_viewer import CTViewer
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QHeaderView, QListWidgetItem, QFileDialog, \
-    QMessageBox, QMenu, QAction, QVBoxLayout
+    QMessageBox, QMenu, QAction, QVBoxLayout, QPushButton
 from PyQt5 import uic
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -50,6 +50,8 @@ class DoctorUI(QMainWindow):
         # 表格单击事件
         self.tableWidget.cellClicked.connect(lambda row, column: self.display_details(row))
         self.viewButton.clicked.connect(self.open_image)
+        self.searchButton.clicked.connect(self.search_patients)
+        self.cancelButton.clicked.connect(self.cancel_search)
         # 设置按钮点击信号
         self.settingsButton.clicked.connect(self.show_settings_menu)
 
@@ -183,19 +185,37 @@ class DoctorUI(QMainWindow):
         self.setStyleSheet(dark_theme)
 
     def load_data_from_database(self):
-        """从数据库加载数据"""
+        """从数据库加载数据并更新表格"""
         try:
             query = text("""
-                       SELECT p.patient_id, p.patient_name, f.fracture_date, f.diagnosis_details 
-                       FROM patients p
-                       LEFT JOIN fracturehistories f ON p.patient_id = f.patient_id
-                   """)
+                SELECT p.patient_id, p.patient_name, f.fracture_date, f.diagnosis_details
+                FROM patients p
+                LEFT JOIN fracturehistories f ON p.patient_id = f.patient_id
+            """)
             result = session.execute(query).fetchall()
+            if result is None:
+                result = []
 
-            self.patient_data = [list(row) for row in result]
-            self.update_table()
+            self.tableWidget.setRowCount(len(result))
+            self.tableWidget.setColumnCount(5)  # 5列（增加了“操作”列）
+            self.tableWidget.setHorizontalHeaderLabels(["ID", "姓名", "看病日期", "备注信息", "操作"])
+
+            for row_idx, row_data in enumerate(result):
+                for col_idx, value in enumerate(row_data):
+                    item = QTableWidgetItem(str(value))
+                    self.tableWidget.setItem(row_idx, col_idx, item)
+
+                # **添加 "查看" 按钮**
+                view_button = QPushButton("查看图像")
+                view_button.clicked.connect(lambda _, r=row_data[0]: self.view_patient_details(r))
+                self.tableWidget.setCellWidget(row_idx, 4, view_button)  # 第 5 列（索引 4）
+
         except Exception as e:
-            print(f"Error loading data: {e}")
+            print(f"Error loading data from database: {e}")
+
+    def view_patient_details(self, patient_id):
+        """处理查看按钮的点击事件"""
+        print(f"查看病人 {patient_id} 的详细信息")
 
     def update_table(self):
         """更新表格内容并设置分页"""
@@ -215,7 +235,7 @@ class DoctorUI(QMainWindow):
         total_pages = (len(self.patient_data) + self.items_per_page - 1) // self.items_per_page
         self.pageLabel.setText(f"{self.current_page}/{total_pages}")
 
-    def load_patients_to_list(self,row):
+    def load_patients_to_list(self, row):
         """从数据库加载所有病人信息并显示在patientList中"""
         """
             处理点击表格某一行的操作，获取对应的病人姓名和看病日期并显示在patientList中
@@ -382,6 +402,40 @@ class DoctorUI(QMainWindow):
             "严重程度：\n"
             "诊断详情：\n"
         )
+
+    def search_patients(self):
+        """根据搜索框内容查询病人数据并更新表格"""
+        search_query = self.searchBox.text().strip()
+
+        if not search_query:
+            # 如果搜索框为空，加载所有病人数据
+            self.load_data_from_database()
+            return
+
+        try:
+            print(f"搜索关键词: {search_query}")  # 调试信息
+
+            # 构建查询语句，根据搜索框内容过滤病人数据
+            query = text("""
+                SELECT p.patient_id, p.patient_name, f.fracture_date, f.diagnosis_details
+                FROM patients p
+                LEFT JOIN fracturehistories f ON p.patient_id = f.patient_id
+                WHERE p.patient_name LIKE :search_query OR f.fracture_date LIKE :search_query
+            """)
+            result = session.execute(query, {"search_query": f"%{search_query}%"}).fetchall()
+
+            if not result:
+                print("没有找到匹配的病人数据")  # 调试信息
+
+            self.patient_data = [list(row) for row in result]
+            self.update_table()  # 确保表格更新
+        except Exception as e:
+            print(f"Error during search: {e}")
+
+    def cancel_search(self):
+        """取消搜索并还原表格数据"""
+        self.searchBox.clear()  # 清空搜索框
+        self.load_data_from_database() # 还原表格数据
 
     def open_image(self):
         # Open file dialog to select image
