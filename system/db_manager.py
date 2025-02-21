@@ -1,3 +1,4 @@
+from datetime import datetime
 import pyodbc
 from sqlalchemy import create_engine, Column, Integer, String, CHAR, VARCHAR, DateTime, Date, ForeignKey, Enum, Text
 import pymysql
@@ -26,13 +27,17 @@ from sqlalchemy.orm import sessionmaker, relationship
 Base = declarative_base()
 
 # 医生表
-'''class Doctors(Base):
+class doctors(Base):
     __tablename__ = 'doctors'
     doctor_id = Column(String(20), primary_key=True)
-    doctor_name = Column(String(50))
-    doctor_password = Column(String(20))
+    doctor_name = Column(String(50),nullable=False)
+    doctor_password = Column(String(20),nullable=False)
     phone = Column(String(11))
-    specialty = Column(String(50))'''
+    specialty = Column(String(50))
+
+    # 添加与聊天记录的关系
+    sent_messages = relationship("chat_records", foreign_keys="[chat_records.sender_id]", back_populates="sender")
+    received_messages = relationship("chat_records", foreign_keys="[chat_records.receiver_id]", back_populates="receiver")
 
 # 病人表
 class patients(Base):
@@ -76,6 +81,20 @@ class Admin(Base):
     admin_name = Column(String(50))
     admin_password = Column(String(20))
     phone = Column(String(11))
+
+class chat_records(Base):
+    __tablename__ = 'chat_records'
+    # 定义表的字段
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sender_id = Column(Integer, ForeignKey('doctors.doctor_id', ondelete="CASCADE", onupdate="RESTRICT"), nullable=False)
+    receiver_id = Column(Integer, ForeignKey('doctors.doctor_id', ondelete="CASCADE", onupdate="RESTRICT"), nullable=False)
+    message_content = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # 定义外键关系（可以用于查询发送者和接收者的用户信息）
+    sender = relationship("doctors", foreign_keys=[sender_id], back_populates="sent_messages")
+    receiver = relationship("doctors", foreign_keys=[receiver_id], back_populates="received_messages")
+
 
 '''def verify_user(user_id, password, user_type):
     if user_type == 'doctor':
@@ -165,7 +184,9 @@ def verify_user(user_id, password, user_type):
         logger.error(f"Database error: {str(e)}")
         return False, "数据库错误"
 
-'''def register_user(user_id, name, password, phone, user_type, specialty=None):
+
+
+def register_user(user_id, name, password, phone, user_type, specialty=None):
     try:
         connection = get_connection()
         if not connection:
@@ -192,9 +213,10 @@ def verify_user(user_id, password, user_type):
         
         return True, "注册成功"
     except Exception as e:
-        session.rollback()
+        if connection:
+            connection.rollback()
         return False, f"数据库错误: {e}"
-'''
+
 
 # MySQL 数据库初始化函数
 def init_database():
@@ -211,16 +233,18 @@ def init_database():
         cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_config['database']} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
         cursor.execute(f"USE {db_config['database']}")
 
+
         # 创建医生表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS doctors (
-                id VARCHAR(20) PRIMARY KEY,
-                name VARCHAR(50) NOT NULL,
-                password VARCHAR(100) NOT NULL,
+                doctor_id VARCHAR(20) PRIMARY KEY,
+                doctor_name VARCHAR(50) NOT NULL,
+                doctor_password VARCHAR(100) NOT NULL,
                 phone VARCHAR(20),
                 specialty VARCHAR(50)
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         """)
+
         # 创建病人表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS patients (
@@ -252,17 +276,19 @@ def init_database():
                     ON UPDATE RESTRICT
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         """)
+        #聊天记录
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_records (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sender_id INT NOT NULL,
+                receiver_id INT NOT NULL,
+                message_content TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sender_id) REFERENCES doctors(doctor_id) ON DELETE CASCADE ON UPDATE RESTRICT,
+                FOREIGN KEY (receiver_id) REFERENCES doctors(doctor_id) ON DELETE CASCADE ON UPDATE RESTRICT
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        """)
 
-        # 创建病人表
-        # cursor.execute("""
-        #     CREATE TABLE IF NOT EXISTS patients (
-        #         id VARCHAR(20) PRIMARY KEY,
-        #         name VARCHAR(50) NOT NULL,
-        #         password VARCHAR(100) NOT NULL,
-        #         phone VARCHAR(20)
-        #     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-        # """)
-        
         # 创建管理员表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS admins (
@@ -342,6 +368,108 @@ def insert_fracture_history(history_id, patient_id, fracture_date, fracture_loca
     finally:
         cursor.close()
         connection.close()
+
+
+def insert_doctor(doctor_id, doctor_name, doctor_password, phone=None, specialty=None):
+    """插入医生信息"""
+    try:
+        connection = get_connection()  # 获取数据库连接
+        cursor = connection.cursor()
+
+        # 插入数据的 SQL
+        insert_query = """
+        INSERT INTO doctors (doctor_id, doctor_name, doctor_password, phone, specialty)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        print(22)
+        # 执行插入操作
+        cursor.execute(insert_query, (doctor_id, doctor_name, doctor_password, phone, specialty))
+        connection.commit()  # 提交事务
+
+        logger.info(f"Successfully inserted doctor {doctor_name} with ID {doctor_id}.")
+    except pymysql.MySQLError as e:
+        logger.error(f"Error inserting doctor: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
+
+def insert_chat_record(sender_id, receiver_id, message_content):
+    """插入聊天记录"""
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        # 验证发送者和接收者 ID 是否有效
+        if sender_id == receiver_id:
+            raise ValueError("Sender and receiver cannot be the same.")
+
+        # 插入数据的 SQL
+        insert_query = """
+        INSERT INTO chat_records (sender_id, receiver_id, message_content)
+        VALUES (%s, %s, %s)
+        """
+        cursor.execute(insert_query, (sender_id, receiver_id, message_content))
+        connection.commit()
+        logger.info(f"Successfully inserted chat record from {sender_id} to {receiver_id}.")
+    except pymysql.MySQLError as e:
+        logger.error(f"Error inserting chat record: {e}")
+    except ValueError as ve:
+        logger.error(ve)
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+import pymysql
+from pymysql import Error
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+# 获取数据库连接
+def get_connection():
+    # 假设已经有配置好的数据库连接函数
+    try:
+        connection = pymysql.connect(
+            host=db_config['host'],
+            user=db_config['user'],
+            password=db_config['password'],
+            database=db_config['database'],
+            charset=db_config['charset'],
+            port=db_config['port']
+        )
+        # cursor = connection.cursor()
+        # try:
+        #     # 删除表格的 SQL 语句
+        #     cursor.execute("DROP TABLE IF EXISTS doctors;")
+        #     connection.commit()  # 提交事务
+        #     print("Table deleted successfully!")
+        # except pymysql.MySQLError as e:
+        #     print(f"Error deleting table: {e}")
+        # finally:
+        #     cursor.close()
+        #     connection.close()
+        return connection
+    except Error as e:
+        logger.error(f"Error connecting to MySQL: {e}")
+        return None
+
+
+
+insert_doctor(1, "Dr. John Doe", "password123", "1234567890", "Orthopedics")
+insert_doctor(2, "Dr. Doe", "password123", "1234567890", "Orthopedics")
+insert_doctor(3, "Dr. Jane Smith", "password456", "2345678901", "Cardiology")
+insert_doctor(4, "Dr. Emily White", "password789", "3456789012", "Pediatrics")
+insert_doctor(5, "Dr. Michael Brown", "password101", "4567890123", "Dermatology")
+insert_doctor(6, "Dr. Lisa Green", "password202", "5678901234", "Neurology")
+insert_doctor(7, "Dr. Mark Lee", "password303", "6789012345", "Gastroenterology")
+
+# 假设要插入一条聊天记录
+#insert_chat_record(2, 1, "Damn it!")
+#insert_chat_record(2, 1, "Shit!")
 
 # 示例：插入一条病人信息
 insert_patient(

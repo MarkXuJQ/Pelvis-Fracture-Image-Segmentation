@@ -61,11 +61,11 @@ class CTViewer(QWidget):
 
     def back_to_MainWindow(self):
         # 询问用户是否确定退出
-        from system.main_window import MainWindow
+        from system.doctor_window import DoctorUI
         main_window = self.parent()  # Assuming the parent of CTViewer is the MainWindow
         self.close()  # 关闭当前窗口 (CTViewer)
         main_window.close()
-        self.main_window = MainWindow()
+        self.main_window = DoctorUI()
         self.main_window.show()
 
 
