@@ -11,7 +11,8 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QHeader
 from PyQt5 import uic
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-
+from chat_window import ChatApp
+from settings_dialog import SettingsDialog
 from db_config import db_config
 
 # 创建数据库连接
@@ -30,7 +31,8 @@ class DoctorUI(QMainWindow):
         # 初始化控件
         self.current_page = 1
         self.items_per_page = 10
-
+        self.viewer = None  # Will hold the current image viewer
+        self.render_on_open = False
 
         self.message_list_data = [
             "注意事项：请检查病人病史。",
@@ -54,6 +56,7 @@ class DoctorUI(QMainWindow):
         self.cancelButton.clicked.connect(self.cancel_search)
         # 设置按钮点击信号
         self.settingsButton.clicked.connect(self.show_settings_menu)
+        self.chatCollaButton.clicked.connect(self.open_collaboration_window)  # 点击时打开聊天合作窗口
 
         # 创建菜单（悬浮按钮）
         self.settings_menu = QMenu(self)
@@ -61,10 +64,13 @@ class DoctorUI(QMainWindow):
         # 创建菜单项
         self.help_action = QAction("帮助", self)
         self.exit_action = QAction("退出", self)
-
+        self.settings_action = QAction("3D模型", self)
         # 将菜单项添加到菜单中
         self.settings_menu.addAction(self.help_action)
         self.settings_menu.addAction(self.exit_action)
+        self.settings_menu.addAction(self.settings_action)
+
+        self.settings_action.triggered.connect(self.open_settings)
 
         # 调整布局比例
         self.adjust_layout()
@@ -216,7 +222,11 @@ class DoctorUI(QMainWindow):
     def view_patient_details(self, patient_id):
         """处理查看按钮的点击事件"""
         print(f"查看病人 {patient_id} 的详细信息")
-
+    def open_settings(self):
+        dialog = SettingsDialog(self, render_on_open=self.render_on_open)
+        if dialog.exec_():
+            settings = dialog.get_settings()
+            self.render_on_open = settings['render_on_open']
     def update_table(self):
         """更新表格内容并设置分页"""
         self.tableWidget.setRowCount(0)
@@ -281,6 +291,10 @@ class DoctorUI(QMainWindow):
         # 在按钮位置弹出菜单
         self.settings_menu.exec_(self.settingsButton.mapToGlobal(self.settingsButton.rect().bottomLeft()))
 
+    def open_collaboration_window(self):
+        # 打开聊天合作窗口
+        self.collab_window = ChatApp()
+        self.collab_window.show()
     # 定义点击事件处理函数
     def on_patient_item_clicked(self, item):
         # 获取点击项的文本内容

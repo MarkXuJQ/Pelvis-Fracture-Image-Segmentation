@@ -151,6 +151,18 @@ def get_connection():
             charset=db_config['charset'],
             port=db_config['port']
         )
+        '''cursor = connection.cursor()
+        try:
+            # 删除表格的 SQL 语句
+            cursor.execute("DROP TABLE IF EXISTS fracturehistories")
+            cursor.execute("DROP TABLE IF EXISTS patients")
+            connection.commit()  # 提交事务
+            print("Table deleted successfully!")
+        except pymysql.MySQLError as e:
+            print(f"Error deleting table: {e}")
+        finally:
+            cursor.close()
+            connection.close()'''
         logger.info("Successfully connected to MySQL database")
         return connection
     except Error as e:
@@ -256,9 +268,9 @@ def init_database():
                 gender ENUM('male', 'female', 'other'),
                 contact_person VARCHAR(100),
                 contact_phone VARCHAR(20),
-                email VARCHAR(100),
+                email VARCHAR(100) UNIQUE,
                 age INT,
-                id_card VARCHAR(18)
+                id_card VARCHAR(18) UNIQUE
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         """)
 
@@ -298,7 +310,52 @@ def init_database():
                 phone VARCHAR(20)
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         """)
-        
+        # 创建协作任务表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                task_id INT AUTO_INCREMENT PRIMARY KEY,
+                task_title VARCHAR(200) NOT NULL,
+                task_description TEXT,
+                assigned_doctor_id VARCHAR(20),
+                patient_id VARCHAR(6),
+                due_date DATETIME,
+                status ENUM('pending', 'completed', 'in_progress') DEFAULT 'pending',
+                FOREIGN KEY (assigned_doctor_id) REFERENCES doctors(doctor_id)
+                    ON DELETE SET NULL ON UPDATE CASCADE,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+                    ON DELETE CASCADE ON UPDATE RESTRICT
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        """)
+        # 创建文档表
+        cursor.execute("""
+                   CREATE TABLE IF NOT EXISTS documents (
+                       doc_id INT AUTO_INCREMENT PRIMARY KEY,
+                       patient_id VARCHAR(6) NOT NULL,
+                       doctor_id VARCHAR(20) NOT NULL,
+                       file_path VARCHAR(255),
+                       description TEXT,
+                       uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                       FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+                           ON DELETE CASCADE ON UPDATE RESTRICT,
+                       FOREIGN KEY (doctor_id) REFERENCES doctors(doctor_id)
+                           ON DELETE CASCADE ON UPDATE RESTRICT
+                   ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+               """)
+        # 创建笔记表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notes (
+                note_id INT AUTO_INCREMENT PRIMARY KEY,
+                patient_id VARCHAR(6) NOT NULL,
+                doctor_id VARCHAR(20) NOT NULL,
+                note_content TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+                    ON DELETE CASCADE ON UPDATE RESTRICT,
+                FOREIGN KEY (doctor_id) REFERENCES doctors(doctor_id)
+                    ON DELETE CASCADE ON UPDATE RESTRICT
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        """)
         connection.commit()
         cursor.close()
         connection.close()
@@ -422,6 +479,33 @@ def insert_chat_record(sender_id, receiver_id, message_content):
         if connection:
             connection.close()
 
+def insert_task(task_id, task_title, task_description=None, assigned_doctor_id=None, patient_id=None,
+                due_date=None, status='pending'):
+    """插入任务信息"""
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        # 验证任务状态合法性
+        if status not in ['pending', 'completed', 'in_progress']:
+            raise ValueError(f"Invalid status: {status}")
+
+        # 插入数据的 SQL
+        insert_query = """
+        INSERT INTO tasks (task_id, task_title, task_description, assigned_doctor_id, patient_id, due_date, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_query, (task_id, task_title, task_description, assigned_doctor_id, patient_id, due_date, status))
+        connection.commit()
+        logger.info(f"Successfully inserted task {task_title} with ID {task_id}.")
+    except pymysql.MySQLError as e:
+        logger.error(f"Error inserting task: {e}")
+    except ValueError as ve:
+        logger.error(f"Error in status validation: {ve}")
+    finally:
+        cursor.close()
+        connection.close()
+
 import pymysql
 from pymysql import Error
 from datetime import datetime
@@ -429,33 +513,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 获取数据库连接
-def get_connection():
-    # 假设已经有配置好的数据库连接函数
-    try:
-        connection = pymysql.connect(
-            host=db_config['host'],
-            user=db_config['user'],
-            password=db_config['password'],
-            database=db_config['database'],
-            charset=db_config['charset'],
-            port=db_config['port']
-        )
-        # cursor = connection.cursor()
-        # try:
-        #     # 删除表格的 SQL 语句
-        #     cursor.execute("DROP TABLE IF EXISTS doctors;")
-        #     connection.commit()  # 提交事务
-        #     print("Table deleted successfully!")
-        # except pymysql.MySQLError as e:
-        #     print(f"Error deleting table: {e}")
-        # finally:
-        #     cursor.close()
-        #     connection.close()
-        return connection
-    except Error as e:
-        logger.error(f"Error connecting to MySQL: {e}")
-        return None
 
 
 
@@ -470,7 +527,8 @@ insert_doctor(7, "Dr. Mark Lee", "password303", "6789012345", "Gastroenterology"
 # 假设要插入一条聊天记录
 #insert_chat_record(2, 1, "Damn it!")
 #insert_chat_record(2, 1, "Shit!")
-
+#insert_chat_record(3, 1, "Shit!")
+#insert_chat_record(1, 3, "ok!")
 # 示例：插入一条病人信息
 insert_patient(
     patient_id="P00001",
@@ -543,6 +601,15 @@ insert_fracture_history(
     fracture_location="spine",
     severity_level="mild",
     diagnosis_details="Mild spine fracture after a fall."
+)
+insert_task(
+    task_id=1,
+    task_title="Complete Patient Diagnosis",
+    task_description="Diagnose the patient based on recent tests and provide recommendations.",
+    assigned_doctor_id=1,
+    patient_id="P00001",
+    due_date="2025-03-01 15:00:00",
+    status="pending"
 )
 
 # 在程序启动时初始化数据库

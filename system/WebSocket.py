@@ -23,15 +23,7 @@ session = Session()
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-'''@app.route('/')
-def index():
-    return 'Hello, World!'  # 或者你可以返回一个模板，或者静态文件
 
-# favicon 路由
-@app.route('/favicon.ico')
-def favicon():
-    return '', 204  # 返回 No Content
-'''
 # 处理消息的函数
 # 在 handle_message 中添加日志
 @socketio.on('send_message')
@@ -95,6 +87,79 @@ def get_chat_history(data):
     # 执行获取聊天记录的操作并返回
     emit('chat_history', {'history': []})
     print(999)
+
+@socketio.on('get_task_list')
+def get_task_list(data):
+    print("Fetching task list...")
+    assigned_doctor_id = data['assigned_doctor_id']
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        cursor.execute("""
+                    SELECT task_id, task_title 
+                    FROM tasks
+                    WHERE assigned_doctor_id = %s
+                """, (assigned_doctor_id))
+        print("cnm")
+        # 获取任务的任务标题
+        #cursor.execute("SELECT task_id, task_title FROM tasks WHERE assigned_doctor_id = %s")  # 获取任务ID和任务标题
+        tasks = cursor.fetchall()  # 获取所有任务数据
+
+        # 返回任务列表给客户端
+        task_list_data = [{'task_id': row[0], 'task_title': row[1]} for row in tasks]
+        print(f"Sending task list: {task_list_data}")
+        emit('task_list', {'tasks': task_list_data}, broadcast=False)
+
+    except pymysql.MySQLError as e:
+        logging.error(f"Error fetching task list: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
+
+
+@socketio.on('get_task_details')
+def get_task_details(data):
+    task_id = data['task_id']
+    print(345)  # 打印调试信息
+
+    # 从数据库中获取任务信息
+    connection = get_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("""
+            SELECT task_title, task_description, assigned_doctor_id, patient_id, due_date, status 
+            FROM tasks
+            WHERE task_id = %s
+        """, (task_id,))
+
+        task_details = cursor.fetchone()
+
+        if task_details:
+            # 将任务详情返回给客户端
+            task_details_data = {
+                'task_title': task_details[0],
+                'task_description': task_details[1],
+                'assigned_doctor_id': task_details[2],
+                'patient_id': task_details[3],
+                'due_date': task_details[4].strftime("%Y-%m-%d %H:%M:%S"),
+                'status': task_details[5]
+            }
+            logging.info(f"Sending task details: {task_details_data}")
+            print(567)  # 打印调试信息
+            emit('task_details', {'task': task_details_data}, broadcast=False)
+        else:
+            # 如果没有找到任务详情，返回空字典
+            emit('task_details', {'task': {}})
+
+    except Exception as e:
+        logging.error(f"Error fetching task details: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
+    print('Requesting task details:', data)  # 打印请求的任务数据
+    print(999)  # 打印调试信息
 
 
 if __name__ == '__main__':

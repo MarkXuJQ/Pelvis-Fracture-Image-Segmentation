@@ -31,6 +31,13 @@
         </property>
        </widget>
       </item>
+	<item>
+       <widget class="QPushButton" name="chatCollaButton">
+        <property name="text">
+         <string>聊天合作</string>
+        </property>
+       </widget>
+      </item>
       <item>
        <spacer name="horizontalSpacer">
         <property name="orientation">
