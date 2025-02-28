@@ -162,6 +162,35 @@ def get_task_details(data):
     print(999)  # 打印调试信息
 
 
+@socketio.on('delete_task')
+def delete_task(data):
+    task_id = data['task_id']
+    print(f"Deleting task with ID: {task_id}")
+
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        # 执行 SQL 查询删除任务
+        cursor.execute("""
+            DELETE FROM tasks
+            WHERE task_id = %s
+        """, (task_id,))
+
+        connection.commit()
+
+        # 向客户端确认删除成功
+        emit('task_deleted', {'task_id': task_id}, broadcast=False)
+        print(f"Task with ID {task_id} has been deleted.")
+
+    except pymysql.MySQLError as e:
+        logging.error(f"Error deleting task: {e}")
+        emit('task_deleted', {'task_id': None, 'error': str(e)}, broadcast=False)
+    finally:
+        cursor.close()
+        connection.close()
+
+
 if __name__ == '__main__':
     print("Starting WebSocket server on ws://localhost:5000")
     socketio.run(app, host='0.0.0.0', port=5000,allow_unsafe_werkzeug=True)

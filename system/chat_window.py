@@ -1,18 +1,28 @@
 import sys
 import json
+
+from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from PyQt5.QtWidgets import (
+    QApplication, QListView, QWidget, QVBoxLayout, QLabel, QPushButton, QMenu, QStyleOptionViewItem, QStyledItemDelegate
+)
+from PyQt5.QtCore import Qt, QSize
 import socketio
 from PyQt5 import uic
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QLineEdit, QPushButton, QListWidget, QTabWidget, \
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QFileDialog, QHBoxLayout, QLabel
+    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QFileDialog, QHBoxLayout, QLabel, QListWidgetItem, QMenu, \
+    QAction
 from qasync import QEventLoop
 import asyncio
+from delegate import  TaskItemDelegate
+
 
 class ChatApp(QMainWindow):
     def __init__(self):
         super().__init__()
 
         # 应用样式表
-        self.apply_stylesheet()
+        #self.apply_stylesheet()
 
         # 创建 Socket.IO 客户端
         self.sio = socketio.Client()
@@ -80,8 +90,11 @@ class ChatApp(QMainWindow):
         # 布局设置
         main_layout = QHBoxLayout(self.central_widget)
         main_layout.addWidget(self.left_widget)
+        main_layout.setStretchFactor(self.left_widget, 2)  # 设置伸缩因子为 2
         main_layout.addWidget(self.center_widget)
+        main_layout.setStretchFactor(self.center_widget, 4)  # 设置伸缩因子为 2
         main_layout.addWidget(self.right_widget)
+        main_layout.setStretchFactor(self.right_widget, 5)  # 设置伸缩因子为 2
 
     def switch_to_tab(self, item):
         selected_tab = item.text()
@@ -187,7 +200,7 @@ class ChatApp(QMainWindow):
 
     def load_chat_history(self):
         print(11)
-        #self.chat_area.clear()
+        self.clear_right_layout()
         print(666)
         # 聊天区
         self.chat_area = QTextEdit(self)
@@ -244,24 +257,98 @@ class ChatApp(QMainWindow):
         self.welcome_label.setText("任务列表：请选择一个任务")
 
         self.remove_list_widget()
+        self.clear_right_layout()
         self.task_list = QListWidget(self)
         self.center_layout.addWidget(self.task_list)
-        print("ok")
+        print(6)
+
+        # Set custom delegate for the task list
+        delegate = TaskItemDelegate(self.task_list)
+        self.task_list.setItemDelegate(delegate)
 
         self.assigned_doctor_id = 1
         data = {
             'assigned_doctor_id': self.assigned_doctor_id
         }
-        print(222)
         self.sio.emit('get_task_list', data)
         print("c")
     def on_task_list(self,data):
         print(44)
         task_list_data = data['tasks']
         print(task_list_data)
+        # 清空现有的任务项
+        self.task_list.clear()
+
         for task in task_list_data:
             task_title = task['task_title']  # 获取任务标题
-            self.task_list.addItem(task_title)  # 将任务标题添加到列表中
+            task_id = task['task_id']  # 获取任务ID
+            print("cnm")
+            print(task_id)
+            # 将任务项添加到列表中并将小部件设置为该任务项的控件
+            #self.task_list.addItem(task_title)  # 添加任务标题到列表
+            # Add task title to the list
+            list_item = QListWidgetItem(task_title)
+            list_item.setData(Qt.UserRole, task_id)  # Store the task ID as custom data
+            #list_item.setFlags(list_item.flags() | Qt.ItemIsEditable)  # 设置为可编辑
+            self.task_list.addItem(list_item)
+            print(6)
+
+            # Set the custom widget as the item for the QListWidget
+            #self.task_list.setItemWidget(list_item, task_item_widget)
+
+            print(f"Added task with ID: {task_id}")
+            print("ccc")
+
+    def create_more_button(self, item, task_id):
+        """创建悬浮按钮 (显示三个点)"""
+        print(99)
+        button = QPushButton("...")  # 显示三个点
+        button.setStyleSheet("""
+            QPushButton {
+                font-size: 18px;
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton:hover {
+                color: #007bff;
+            }
+        """)  # 设置按钮样式（例如字体大小）
+
+        # 当点击按钮时，显示悬浮菜单
+        button.clicked.connect(lambda: self.show_context_menu(item, task_id))
+
+        return button
+
+    def show_context_menu(self, item, task_id):
+        """显示悬浮菜单（包含删除和编辑按钮）"""
+        menu = QMenu(self)
+        print(88)
+        # 创建删除和编辑按钮
+        edit_action = QAction("Edit", self)
+        delete_action = QAction("Delete", self)
+
+        # 为按钮设置点击事件
+        edit_action.triggered.connect(lambda: self.edit_task(task_id))
+        delete_action.triggered.connect(lambda: self.delete_task(task_id))
+
+        # 将按钮添加到菜单
+        menu.addAction(edit_action)
+        menu.addAction(delete_action)
+
+        # 显示菜单
+        menu.exec_(self.mapToGlobal(item.pos()))  # 在任务项的位置显示菜单
+
+    def edit_task(self, task_id):
+        """编辑任务"""
+        print(f"Editing task with ID: {task_id}")
+        # 在这里处理编辑任务的逻辑
+
+    def delete_task(self, task_id):
+        """删除任务"""
+        print(f"Deleting task with ID: {task_id}")
+        # 在这里处理删除任务的逻辑
+        self.sio.emit('delete_task', {'task_id': task_id})  # 删除任务的请求发送到后端
+
     def remove_list_widget(self):
         """删除 center_layout 中的 QListWidget 组件"""
         for i in range(self.center_layout.count()):
@@ -272,6 +359,15 @@ class ChatApp(QMainWindow):
             if widget and isinstance(widget, QListWidget):
                 widget.deleteLater()  # 安全删除 QListWidget
 
+    def clear_right_layout(self):
+        """删除 right_layout 中的所有组件，但保留布局本身"""
+        for i in range(self.right_layout.count()):
+            item = self.right_layout.itemAt(i)
+            widget = item.widget()
+
+            # 如果存在控件，删除它
+            if widget:
+                widget.deleteLater()  # 删除控件，但保留布局
     def create_task(self):
         task_title = "New Task"  # 获取用户输入
         task_description = "Task Description"  # 获取用户输入
