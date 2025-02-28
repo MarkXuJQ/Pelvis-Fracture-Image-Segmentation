@@ -3,7 +3,7 @@
  <class>LoginWindow</class>
  <widget class="QMainWindow" name="LoginWindow">
   <property name="windowTitle">
-   <string>用户登录</string>
+   <string>Login</string>
   </property>
   <property name="geometry">
    <rect>
@@ -18,7 +18,7 @@
     <item>
      <widget class="QLabel" name="user_id_label">
       <property name="text">
-       <string>用户ID:</string>
+       <string>ID:</string>
       </property>
      </widget>
     </item>
@@ -28,7 +28,7 @@
     <item>
      <widget class="QLabel" name="password_label">
       <property name="text">
-       <string>密码:</string>
+       <string>Password:</string>
       </property>
      </widget>
     </item>
@@ -42,7 +42,7 @@
     <item>
      <widget class="QLabel" name="user_type_label">
       <property name="text">
-       <string>用户类型:</string>
+       <string>User Type:</string>
       </property>
      </widget>
     </item>
@@ -53,21 +53,21 @@
        <item>
         <widget class="QRadioButton" name="patient_radio">
          <property name="text">
-          <string>病人</string>
+          <string>Patient</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QRadioButton" name="doctor_radio">
          <property name="text">
-          <string>医生</string>
+          <string>Doctor</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QRadioButton" name="admin_radio">
          <property name="text">
-          <string>管理员</string>
+          <string>Admin</string>
          </property>
         </widget>
        </item>
@@ -77,14 +77,14 @@
     <item>
      <widget class="QPushButton" name="login_button">
       <property name="text">
-       <string>登录</string>
+       <string>Login</string>
       </property>
      </widget>
     </item>
     <item>
      <widget class="QPushButton" name="register_button">
       <property name="text">
-       <string>注册</string>
+       <string>Register</string>
       </property>
      </widget>
     </item>
