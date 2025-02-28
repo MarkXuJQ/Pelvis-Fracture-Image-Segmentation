@@ -1,8 +1,8 @@
-from IPython.external.qt_for_kernel import QtCore
 from PyQt5 import uic
 from PyQt5.QtCore import Qt
+#from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox, QToolBar, QTableWidget, QCheckBox, \
-    QTableWidgetItem, QHeaderView, QPushButton
+    QTableWidgetItem, QHeaderView, QPushButton, QListWidget, QLabel, QLineEdit, QComboBox
 
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
@@ -16,19 +16,21 @@ class MainWindow(QMainWindow):
         super().__init__()
         current_dir = os.path.dirname(os.path.abspath(__file__))
         ui_file = os.path.join(current_dir, "ui", "main_window.ui")
-        style_file = os.path.join(current_dir, "ui", "button_style.qss")
-        
+
         uic.loadUi(ui_file, self)
-        with open(style_file, 'r', encoding='utf-8') as f:
-            self.setStyleSheet(f.read())
+
         # 获取表格的引用（从 .ui 文件中获取）
         self.tableWidget = self.findChild(QTableWidget, 'tableWidget')
-        self.patient_manage_window = PatientManageWindow(self.tableWidget)
+        self.listWidget = self.findChild(QListWidget, 'listWidget')
+        self.patient_manage_window = PatientManageWindow(self.tableWidget,self.listWidget,False)
+
         self.setWindowTitle("Medical Image Viewer")
-        self.setGeometry(100, 100, 1200, 800)
+        self.setGeometry(0, 0, 1900, 1000)
         self.viewer = None  # Will hold the current image viewer
         self.render_on_open = False
         self.initUI()
+
+        print(os.path.abspath("../image/plan/头像测试.jpg"))
 
     def initUI(self):
         # Create actions
@@ -61,21 +63,21 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar("Main Toolbar")
         self.addToolBar(toolbar)
 
-        # Add "Generate Model" button to the toolbar
-        # generate_model_action = QAction('Generate Model', self)
-        # generate_model_action.triggered.connect(self.generate_model)
-        # generate_model_action.setEnabled(False)
-        # toolbar.addAction(generate_model_action)
-        # self.generate_model_action = generate_model_action
-
         self.design_table()
         self.open_action.clicked.connect(self.open_image)
         self.exit_action.clicked.connect(self.close)
         self.settings_action.clicked.connect(self.open_settings)
         # Connect Patient Management button
-        self.sure.clicked.connect(self.open_patient_manage)
-        self.deleteButton.clicked.connect(self.patient_manage_window.on_delete_patient_info)
+        self.Details.clicked.connect(self.open_patient_manage)
+        self.deleteButton.clicked.connect(self.delete)
+        self.addButton.clicked.connect(self.add)
+        self.patientID_input= self.findChild(QLineEdit, 'patientID_input')
+        self.gender_input= self.findChild(QComboBox, 'gender_input')
 
+        # 添加查找按钮，点击时筛选病人信息
+        self.searchButton.clicked.connect(self.search)
+        # 添加刷新按钮
+        self.clearButton.clicked.connect(self.clear_table)
         # Status bar
         self.statusBar().showMessage('Ready')
 
@@ -85,53 +87,92 @@ class MainWindow(QMainWindow):
         """填充表格并为每一行添加复选框"""
         self.tableWidget.blockSignals(True)  # 暂时禁用信号
         # 调整每一列的宽度
-        self.tableWidget.setColumnWidth(0, 100)  # 设置第一列宽度为100
-        self.tableWidget.setColumnWidth(1, 150)  # 设置第二列宽度为200
-        self.tableWidget.setColumnWidth(2, 150)  # 设置第三列宽度为150
+        self.tableWidget.setColumnWidth(0, 50)  # 设置第一列宽度为100
+        self.tableWidget.setColumnWidth(1, 200)  # 设置第二列宽度为200
+        self.tableWidget.setColumnWidth(2, 200)  # 设置第三列宽度为150
+        self.tableWidget.setColumnWidth(3, 200)  # 设置第三列宽度为150
+
         # 最后一列自动填充剩余宽度
-        self.tableWidget.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.tableWidget.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        # 获取房屋信息并填充到表格
+        patient_list = self.patient_manage_window.get_all_patient_info()
+        self.patient_manage_window.fill_patient_table(patient_list)
+        self.patient_manage_window.create_checkBox()
+
+    def clear_table_selection(self):
+        # 清除表格中的所有选中状态
+        self.tableWidget.clearSelection()  # 清除选中的单元格、行或列
+
+        # 清除复选框的选中状态
+        for row in range(self.tableWidget.rowCount()):
+            checkBoxItem = self.tableWidget.item(row, 0)  # 获取复选框所在的单元格项
+            if checkBoxItem:
+                checkBoxItem.setCheckState(Qt.Unchecked)  # 取消复选框选中状态
+
+        # 如果表格中有按钮，确保按钮的选中状态被清除
+        for row in range(self.tableWidget.rowCount()):
+            button = self.tableWidget.cellWidget(row, 2)  # 假设按钮在第3列
+            if isinstance(button, QPushButton):
+                button.setStyleSheet('')  # 清除按钮的选中样式（如果有的话）
 
 
-        #rows = 5  # 表格的行数
-        # 获取当前表格的行数
-        rows = self.tableWidget.rowCount()
-        for row in range(rows):
-            self.tableWidget.setRowHeight(row, 60)  # 设置每一行的高度为40
-            checkBoxItem = QTableWidgetItem()  # 创建一个表格项
-            checkBoxItem.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)  # 设置为可选中且启用
-            checkBoxItem.setCheckState(Qt.Unchecked)  # 设置复选框初始状态为未选中
+    def search(self):
+        patientID = self.patientID_input.text().strip()  # 获取病人ID
+        gender = self.gender_input.currentText().strip()  # 获取病人性别
+        # 判断是否有输入等级或状态，如果有则筛选
+        if patientID != "" and gender != "请选择":
+            patient_list = self.patient_manage_window.get_patient_by_choose("编号和性别", patientID, gender)
+        elif patientID != "":
+            print(12)
+            patient_list = self.patient_manage_window.get_patient_by_choose("编号", patientID)
+        elif gender != "请选择":
+            print("服了")
+            patient_list = self.patient_manage_window.get_patient_by_choose("性别", gender)
+        else:
+            # 如果没有输入任何内容，显示所有房屋信息
+            patient_list = self.patient_manage_window.get_all_patient_info()
 
-            # 将复选框添加到表格的第一列
-            self.tableWidget.setItem(row, 0, checkBoxItem)
-            # 在control_str列（假设为第3列）下添加"Upload File"按钮
-            upload_button = QPushButton('Upload_File')
-            upload_button.clicked.connect(self.on_upload_button_clicked)  # 连接按钮点击事件到槽函数
-            self.tableWidget.setCellWidget(row, 2, upload_button)  # 在第3列插入按钮
-            self.tableWidget.blockSignals(False)  # 启用信号
-            # 连接itemChanged信号到槽函数
-            self.tableWidget.itemChanged.connect(self.on_checkbox_state_changed)
+        # 更新表格数据
+        self.patient_manage_window.fill_patient_table(patient_list)
+    def clear_table(self):
+        self.patientID_input.clear()  # 清空病人ID输入框
+        self.gender_input.setCurrentIndex(0)
+        self.patient_manage_window.refresh_table()
 
-    # 复选框状态改变时的处理函数
-    def on_checkbox_state_changed(self, item):
-        print(2)
-        """复选框状态改变时的处理函数"""
-        if item.column() == 0:  # 只处理第一列（复选框列）
-            row = item.row()
-            check_state = item.checkState()
-            if check_state == Qt.Checked:
-                print(f"Checkbox in row {row} is checked!")
-            elif check_state == Qt.Unchecked:
-                print(f"Checkbox in row {row} is unchecked!")
-
-    # 假设on_upload_button_clicked是处理按钮点击事件的槽函数
-    def on_upload_button_clicked(self):
-        print("Upload File button clicked!")
+    def add(self):
+        self.patient_manage_window = PatientManageWindow(self.tableWidget, self.listWidget, False)
+        self.patient_manage_window.add_patient()
+    def delete(self):
+        self.patient_manage_window = PatientManageWindow(self.tableWidget, self.listWidget, False)
+        self.patient_manage_window.delete_patient_info()
 
     def open_patient_manage(self):
-        # Create and show the Patient Management window
-        self.patient_manage_window = PatientManageWindow(self.tableWidget)
-        self.patient_manage_window.show()
+        # 获取选中的复选框的行
+        selected_rows = []
+        for row in range(self.tableWidget.rowCount()):
+            checkbox_item = self.tableWidget.item(row, 0)  # 复选框在表格的第一列（索引为0）
+            if checkbox_item and checkbox_item.checkState() == Qt.Checked:
+                selected_rows.append(row)
 
+        # 如果选中的复选框只有一个，打开病人管理界面
+        if len(selected_rows) == 1:
+            self.patient_manage_window = PatientManageWindow(self.tableWidget, self.listWidget,True)
+            #self.patient_manage_window.is_from_open_patient = True  # 设置标识符为 True
+            self.patient_manage_window.show()
+        else:
+            # 如果没有选中或选中多行，弹出提示
+            QMessageBox.warning(self, "Warning", "Please select exactly one patient.")
+
+        # 取消其他复选框选中状态，确保只有一个被选中
+        self.reset_checkbox_state()
+
+    def reset_checkbox_state(self):
+        # 取消所有复选框的选中状态，确保只有一个被选中
+        for row in range(self.tableWidget.rowCount()):
+            checkbox_item = self.tableWidget.item(row, 0)  # 复选框在表格的第一列
+            if checkbox_item.checkState() == Qt.Checked:
+                continue  # 跳过已选中的复选框
+            checkbox_item.setCheckState(Qt.Unchecked)
     def open_image(self):
         # Open file dialog to select image
         options = QFileDialog.Options()
@@ -232,26 +273,6 @@ class MainWindow(QMainWindow):
         else:
             # For 2D images
             sitk.WriteImage(image, save_path) 
-            
-    # def generate_model(self):
-    #     if hasattr(self.viewer, 'generate_and_display_model'):
-    #         self.viewer.render_model = True
-    #         self.viewer.generate_and_display_model()
-    #     else:
-    #         QMessageBox.warning(self, "Not Available", "Model generation is not available for this image.")
-
-    # def create_crosshairs(self):
-    #     if self.viewer is None:
-    #         QMessageBox.warning(self, "Not Available", "The image viewer is not initialized.")
-    #         return
-    #
-    #     if hasattr(self.viewer, 'create_crosshairs'):
-    #         try:
-    #             self.viewer.create_crosshairs()
-    #         except Exception as e:
-    #             QMessageBox.warning(self, "Error", f"An error occurred while creating crosshairs: {str(e)}")
-    #     else:
-    #         QMessageBox.warning(self, "Not Available", "Crosshair functionality is not available for this image viewer.")
 
     def open_settings(self):
         dialog = SettingsDialog(self, render_on_open=self.render_on_open)
