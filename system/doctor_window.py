@@ -21,13 +21,13 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 class DoctorUI(QMainWindow):
-    def __init__(self):
+    def __init__(self,user_id):
         super().__init__()
 
         # 加载 .ui 文件
         uic.loadUi("ui/doctor_window.ui", self)
 
-
+        self.user_id = user_id
         # 初始化控件
         self.current_page = 1
         self.items_per_page = 10
@@ -293,7 +293,7 @@ class DoctorUI(QMainWindow):
 
     def open_collaboration_window(self):
         # 打开聊天合作窗口
-        self.collab_window = ChatApp()
+        self.collab_window = ChatApp(self.user_id)
         self.collab_window.show()
     # 定义点击事件处理函数
     def on_patient_item_clicked(self, item):

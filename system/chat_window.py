@@ -18,19 +18,19 @@ from delegate import  TaskItemDelegate
 
 
 class ChatApp(QMainWindow):
-    def __init__(self):
+    def __init__(self,user_id):
         super().__init__()
 
         # 应用样式表
         #self.apply_stylesheet()
-
+        self.user_id = user_id
         # 创建 Socket.IO 客户端
         self.sio = socketio.Client()
 
         # 连接到服务器
         self.sio.connect('http://localhost:5000')
 
-        self.sender_id = 1  # 示例发送者ID（医生ID）
+        self.sender_id = user_id  # 示例发送者ID（医生ID）
         self.receiver_id = None  # 将在点击聊天列表时动态设置接收者ID
 
 
@@ -183,13 +183,14 @@ class ChatApp(QMainWindow):
 
     def on_receive_message(self, data):
         # 接收到消息后，将消息显示到聊天区域
+        print("接收到消息？")
         if data.get('sender_id') == self.receiver_id:
-            self.chat_area.append(f"Patient: {data['message']}")
+            self.chat_area.append(f"Doctor2: {data['message']}")
 
     def send_message(self):
         message = self.message_input.text()
         if message:
-            self.chat_area.append(f"Doctor: {message}")
+            self.chat_area.append(f"Me: {message}")
             data = {
                 'sender_id': self.sender_id,
                 'receiver_id': self.receiver_id,
@@ -229,7 +230,7 @@ class ChatApp(QMainWindow):
             print(00)
             self.receiver_id = 2  # 设置对应医生的接收者ID
         elif selected_doctor == "Doctor Jane":
-            self.receiver_id = 3  # 设置对应医生的接收者ID
+            self.receiver_id = 1  # 设置对应医生的接收者ID
         print(444)
         # 请求聊天记录
         data = {
@@ -247,7 +248,7 @@ class ChatApp(QMainWindow):
         print(chat_history)
         for message in chat_history:
             print(89)
-            sender = 'Doctor' if message['sender_id'] == self.sender_id else 'Patient'
+            sender = 'Me' if message['sender_id'] == self.sender_id else 'Doctor2'
             print(99)
             self.chat_area.append(f"{sender}: {message['message_content']}")
             print(00)
@@ -263,10 +264,10 @@ class ChatApp(QMainWindow):
         print(6)
 
         # Set custom delegate for the task list
-        delegate = TaskItemDelegate(self.task_list)
+        delegate = TaskItemDelegate(self.task_list,self.sio)
         self.task_list.setItemDelegate(delegate)
 
-        self.assigned_doctor_id = 1
+        self.assigned_doctor_id = self.user_id
         data = {
             'assigned_doctor_id': self.assigned_doctor_id
         }
@@ -478,7 +479,7 @@ if __name__ == "__main__":
     loop = QEventLoop(app)  # Use QEventLoop with PyQt5 to handle asyncio tasks
     asyncio.set_event_loop(loop)  # Set the event loop to be used
 
-    window = ChatApp()
+    window = ChatApp(1)
     window.show()
 
     loop.run_forever() # Start the event loop

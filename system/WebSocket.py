@@ -190,6 +190,36 @@ def delete_task(data):
         cursor.close()
         connection.close()
 
+@socketio.on('update_task_title')
+def update_task_title(data):
+    task_id = data['task_id']
+    new_task_title = data['new_task_title']
+    print(f"Updating task ID {task_id} with new title: {new_task_title}")
+
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        # 执行 SQL 语句更新任务标题
+        cursor.execute("""
+            UPDATE tasks
+            SET task_title = %s
+            WHERE task_id = %s
+        """, (new_task_title, task_id))
+
+        connection.commit()
+
+        # 向客户端确认更新成功
+        emit('task_title_updated', {'task_id': task_id, 'new_task_title': new_task_title}, broadcast=False)
+        print(f"Task ID {task_id} title updated to: {new_task_title}")
+
+    except pymysql.MySQLError as e:
+        logging.error(f"Error updating task title: {e}")
+        emit('task_title_updated', {'task_id': None, 'error': str(e)}, broadcast=False)
+    finally:
+        cursor.close()
+        connection.close()
+
 
 if __name__ == '__main__':
     print("Starting WebSocket server on ws://localhost:5000")
