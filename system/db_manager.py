@@ -169,33 +169,49 @@ def get_connection():
         logger.error(f"Error connecting to MySQL: {e}")
         return None
 
+
 def verify_user(user_id, password, user_type):
     try:
         connection = get_connection()
         if not connection:
             logger.error("Failed to establish database connection")
             return False, "数据库连接失败"
-        
+
         cursor = connection.cursor(pymysql.cursors.DictCursor)
-        query = f"SELECT * FROM {user_type}s WHERE id = %s AND password = %s"
+
+        # 根据 user_type 选择正确的 ID 列名
+        id_column_map = {
+            "doctor": "doctor_id",
+            "patient": "patient_id",
+            "admin": "admin_id"
+        }
+
+        # 获取正确的 ID 列名
+        id_column = id_column_map.get(user_type.lower())
+        if not id_column:
+            logger.error(f"Invalid user type: {user_type}")
+            return False, "用户类型错误"
+
+        # 生成 SQL 语句
+        query = f"SELECT * FROM {user_type}s WHERE {id_column} = %s AND password = %s"
+
         logger.debug(f"Executing query: {query} with params: {user_id}, {password}")
         cursor.execute(query, (user_id, password))
-        
+
         user = cursor.fetchone()
-        
+
         cursor.close()
         connection.close()
-        
+
         if user:
             logger.info(f"User {user_id} successfully logged in")
             return True, "登录成功！"
         logger.warning(f"Failed login attempt for user {user_id}")
         return False, "用户名或密码错误"
-        
-    except Error as e:
+
+    except pymysql.Error as e:
         logger.error(f"Database error: {str(e)}")
         return False, "数据库错误"
-
 
 
 def register_user(user_id, name, password, phone, user_type, specialty=None):
