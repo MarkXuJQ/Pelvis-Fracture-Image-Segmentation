@@ -10,7 +10,6 @@ def main():
     #login_window = MainWindow() #原来的
     login_window = DoctorUI()  #最新的
     login_window.show()
-
     sys.exit(app.exec_())
 
 if __name__ == '__main__':

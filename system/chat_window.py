@@ -403,6 +403,24 @@ class ChatApp(QMainWindow):
         note_content = self.note_input.text()
         note_data = {'note_content': note_content, 'patient_id': self.receiver_id}
         self.sio.emit('add_note', note_data)
+
+    def display_note_page(self):
+        """显示笔记页面"""
+        self.welcome_label.setText("笔记管理")
+        self.clear_right_layout()
+        
+        # 创建笔记输入区域
+        self.note_input = QTextEdit(self)
+        self.note_input.setPlaceholderText("在这里输入笔记...")
+        
+        # 创建保存按钮
+        save_button = QPushButton("保存笔记", self)
+        save_button.clicked.connect(self.add_note)
+        
+        # 添加到布局
+        self.right_layout.addWidget(self.note_input)
+        self.right_layout.addWidget(save_button)
+
     def start(self):
         self.sio.connect('http://localhost:5000')
     def apply_stylesheet(self):

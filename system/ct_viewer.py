@@ -34,8 +34,8 @@ class CTViewer(QWidget):
         self.reslice_widgets = []
         self.reslice_representations = []
 
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        ui_file = os.path.join(current_dir, "ui", "ct_viewer.ui")
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ui_file = os.path.join(current_dir, "system", "ui", "ct_viewer.ui")
         
         uic.loadUi(ui_file, self)
 
@@ -60,14 +60,14 @@ class CTViewer(QWidget):
         self.setup_mouse_interaction()
 
     def back_to_MainWindow(self):
-        # 询问用户是否确定退出
-        from system.doctor_window import DoctorUI
-        main_window = self.parent()  # Assuming the parent of CTViewer is the MainWindow
-        self.close()  # 关闭当前窗口 (CTViewer)
+        # 在需要时才导入 DoctorUI
+        from doctor_window import DoctorUI
+        
+        main_window = self.parent()
+        self.close()
         main_window.close()
         self.main_window = DoctorUI()
         self.main_window.show()
-
 
     def generate_model(self):
         self.render_model = True
