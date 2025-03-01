@@ -1,12 +1,20 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QPushButton, QLineEdit
 from PyQt5 import uic
-#from system.db_manager import verify_user
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from db_manager import verify_user
 import os
-
 from main_window import MainWindow
+from db_config import db_config
+from system.doctor_window import DoctorUI
+from system.patient_window import PatientUI
 
+# 创建数据库连接
+engine = create_engine(
+    f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
+Session = sessionmaker(bind=engine)
+session = Session()
 
 class LoginWindow(QMainWindow):
     def __init__(self):
@@ -83,13 +91,13 @@ class LoginWindow(QMainWindow):
 
     def open_doctor_main(self, doctor_id):
         print("进入医生主页面")
-        self.main_window = MainWindow()
+        self.main_window = DoctorUI()
         self.main_window.show()
         self.close()
 
     def open_patient_main(self, patient_id):
         print("进入病人主页面")
-        self.main_window = MainWindow()
+        self.main_window = PatientUI()
         self.main_window.show()
         self.close()
 
@@ -104,3 +112,10 @@ class LoginWindow(QMainWindow):
         self.register_window = RegisterWindow()
         self.register_window.show()
 
+if __name__ == "__main__":
+    import sys
+
+    app = QApplication(sys.argv)
+    window = LoginWindow()
+    window.show()
+    sys.exit(app.exec_())

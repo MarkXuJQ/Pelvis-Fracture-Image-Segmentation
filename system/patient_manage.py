@@ -25,10 +25,10 @@ from pymysql import Error
 from db_config import db_config
 
 # 创建数据库连接
-engine = create_engine(f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
+engine = create_engine(
+    f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
 Session = sessionmaker(bind=engine)
 session = Session()
-
 
 
 class AddPatientDialog(QDialog):
@@ -46,7 +46,7 @@ class AddPatientDialog(QDialog):
         self.gender_input = QComboBox(self)
         self.gender_input.addItems(['male', 'female', 'other'])  # 男、女
         self.id_number_input = QLineEdit(self)
-        #self.disease_input = QLineEdit(self)
+        # self.disease_input = QLineEdit(self)
         self.phone_input = QLineEdit(self)
         self.contactPerson_input = QLineEdit(self)
         self.contactPhone_input = QLineEdit(self)
@@ -70,7 +70,7 @@ class AddPatientDialog(QDialog):
         form_layout.addRow("年龄:", self.age_input)
         form_layout.addRow("性别:", self.gender_input)
         form_layout.addRow("联系电话:", self.phone_input)
-        #form_layout.addRow("疾病:", self.disease_input)
+        # form_layout.addRow("疾病:", self.disease_input)
         form_layout.addRow("紧急联系人:", self.contactPerson_input)
         form_layout.addRow("紧急联系人电话:", self.contactPhone_input)
         form_layout.addRow("身份证号码:", self.id_number_input)
@@ -97,7 +97,7 @@ class AddPatientDialog(QDialog):
         name = self.name_input.text().strip()
         age = self.age_input.text().strip()
         gender = self.gender_input.currentText()
-        #disease = self.disease_input.text().strip()
+        # disease = self.disease_input.text().strip()
         phone = self.phone_input.text().strip()
         contact_person = self.contactPerson_input.text().strip()  # 紧急联系人
         contact_phone = self.contactPhone_input.text().strip()  # 紧急联系人电话
@@ -142,7 +142,7 @@ class AddPatientDialog(QDialog):
             "contact_phone": contact_phone,
             "id_card": id_number,
             "date_of_birth": birth_date_str,  # 使用合成的出生日期
-            "password_hash":1234
+            "password_hash": 1234
         }
 
         # 插入新病人信息到数据库
@@ -177,9 +177,8 @@ class AddPatientDialog(QDialog):
             session.close()  # 关闭数据库会话
 
 
-
 class PatientManageWindow(QMainWindow):
-    def __init__(self,table,list,is_from_open_patient):
+    def __init__(self, table, list, is_from_open_patient):
         super(PatientManageWindow, self).__init__()
         current_dir = os.path.dirname(os.path.abspath(__file__))
         ui_file = os.path.join(current_dir, "ui", "patient_message.ui")
@@ -193,9 +192,9 @@ class PatientManageWindow(QMainWindow):
 
         self.setWindowTitle("Patient Management")
         self.setGeometry(0, 0, 1400, 800)
-        self.tableWidget=table
+        self.tableWidget = table
         self.listWidget = list
-        #self.initUI()
+        # self.initUI()
         self.nameLineEdit = self.findChild(QLineEdit, 'nameLineEdit')
         self.ageLineEdit = self.findChild(QLineEdit, 'ageLineEdit')
         self.genderLineEdit = self.findChild(QLineEdit, 'genderLineEdit')
@@ -213,14 +212,14 @@ class PatientManageWindow(QMainWindow):
         self.avatarLabel_2.setFixedSize(250, 250)  # 设定合适的宽高
         self.avatarLabel_2 = self.findChild(QLabel, 'avatarLabel_2')
         pixmap = QPixmap("../image/plan/头像测试.jpg")
-        self.avatarLabel_2.setPixmap(pixmap.scaled(self.avatarLabel_2.size(),  Qt.IgnoreAspectRatio))
+        self.avatarLabel_2.setPixmap(pixmap.scaled(self.avatarLabel_2.size(), Qt.IgnoreAspectRatio))
         self.is_from_open_patient = is_from_open_patient
         if self.is_from_open_patient:
             self.view_patient()
 
     def back(self):
         self.hide()  # 关闭当前窗口 (CTViewer)
-        self.is_from_open_patient=False
+        self.is_from_open_patient = False
         if self.checkbox_item:
             self.checkbox_item.setCheckState(Qt.Unchecked)  # 取消选中
 
@@ -233,11 +232,10 @@ class PatientManageWindow(QMainWindow):
             self.add_log("新增病人成功！", "操作成功", "警告")
             self.refresh_table()
 
-
-    def get_patient_by_choose(self,choose, choice1, choice2=None):
+    def get_patient_by_choose(self, choose, choice1, choice2=None):
         """筛选病人信息"""
         session = Session()  # 获取数据库会话
-        print(choose,choice1)
+        print(choose, choice1)
         try:
             if choose == "编号":
                 patient_info = session.query(patients).filter(patients.patient_id == choice1).all()
@@ -253,7 +251,7 @@ class PatientManageWindow(QMainWindow):
                 if choice1.isdigit():  # 判断病人ID是否为数字
                     # 查询病人信息，根据病人ID和性别进行筛选
                     patient_info = session.query(patients).filter(patients.patient_id == choice1,
-                                                                 patients.gender == choice2).all()
+                                                                  patients.gender == choice2).all()
                 else:
                     print("Invalid patient ID")
                     return []
@@ -316,6 +314,7 @@ class PatientManageWindow(QMainWindow):
         finally:
             # 确保关闭会话
             session.close()
+
     def view_patient(self):
         """显示通用的个人信息"""
         selected_rows = []
@@ -332,7 +331,7 @@ class PatientManageWindow(QMainWindow):
         # 从数据库获取病人的个人信息
         patient_info = session.query(patients).filter_by(patient_id=patient_id).first()
         print("?")
-        #patient_fracture_info = session.query(FractureHistories).filter_by(patient_id=patient_id).all()
+        # patient_fracture_info = session.query(FractureHistories).filter_by(patient_id=patient_id).all()
         print("?")
         print(patient_info)
         # 如果获取到了病人信息
@@ -359,9 +358,9 @@ class PatientManageWindow(QMainWindow):
             self.contactPhoneLineEdit.setReadOnly(True)
 
             # 调整每一列的宽度
-            #self.medicalHistorytable.setColumnWidth(0, 150)  # 设置第一列宽度为100
+            # self.medicalHistorytable.setColumnWidth(0, 150)  # 设置第一列宽度为100
             self.medicalHistorytable.setColumnWidth(0, 150)  # 设置第二列宽度为200
-            #self.medicalHistorytable.setColumnWidth(1, 180)  # 设置第三列宽度为150
+            # self.medicalHistorytable.setColumnWidth(1, 180)  # 设置第三列宽度为150
             self.medicalHistorytable.setColumnWidth(1, 180)  # 设置第三列宽度为150
             self.medicalHistorytable.setColumnWidth(2, 150)  # 设置第三列宽度为150
             self.medicalHistorytable.setColumnWidth(3, 200)  # 设置第三列宽度为150
@@ -378,9 +377,9 @@ class PatientManageWindow(QMainWindow):
                 self.medicalHistorytable.setRowCount(len(patient_fracture_info))  # 设置行数为骨折记录数
                 for row, fracture in enumerate(patient_fracture_info):
                     self.medicalHistorytable.setItem(row, 0, QTableWidgetItem(str(fracture.fracture_date)))  # 骨折日期
-                    #self.medicalHistorytable.setItem(row, 1, QTableWidgetItem(fracture.diagnosis_hospital))
+                    # self.medicalHistorytable.setItem(row, 1, QTableWidgetItem(fracture.diagnosis_hospital))
                     self.medicalHistorytable.setItem(row, 1, QTableWidgetItem(str(fracture.fracture_location)))  # 骨折部位
-                    #self.medicalHistorytable.setItem(row, 2, QTableWidgetItem(fracture.fracture_type))  # 骨折类型
+                    # self.medicalHistorytable.setItem(row, 2, QTableWidgetItem(fracture.fracture_type))  # 骨折类型
                     self.medicalHistorytable.setItem(row, 2, QTableWidgetItem(str(fracture.severity_level)))  # 骨折严重程度
                     self.medicalHistorytable.setItem(row, 3, QTableWidgetItem(str(fracture.diagnosis_details)))  # 诊断描述
 
@@ -390,9 +389,9 @@ class PatientManageWindow(QMainWindow):
                     self.medicalHistorytable.setCellWidget(row, 4, view_image_button)
 
                     # 为按钮设置点击事件
-                    #view_image_button.clicked.connect(lambda checked, f=fracture: self.view_fracture_image(f))
+                    # view_image_button.clicked.connect(lambda checked, f=fracture: self.view_fracture_image(f))
 
-            #self.medicalHistorytable.setEnabled(False)  # 禁用表格交互
+            # self.medicalHistorytable.setEnabled(False)  # 禁用表格交互
 
     def view_fracture_image(self, fracture):
         """点击按钮时查看骨折图像"""
@@ -416,6 +415,7 @@ class PatientManageWindow(QMainWindow):
             dialog.exec_()
         else:
             print("没有找到骨折图像！")
+
     def delete_patient_info(self):
         """删除病人信息"""
         print("删除")
@@ -430,13 +430,13 @@ class PatientManageWindow(QMainWindow):
                     patient_to_delete = session.query(patients).filter_by(patient_id=patientID).first()
                     print(patient_to_delete)
                     if patient_to_delete:
-                        #insert_maintenance_record(self.user_id, housingID, f"删除房屋{housingID}")
+                        # insert_maintenance_record(self.user_id, housingID, f"删除房屋{housingID}")
                         print(556)
                         session.delete(patient_to_delete)
                         session.commit()  # 提交删除操作
                         # 弹出提示框显示删除成功
                         QMessageBox.information(self, "删除成功", "该病人信息已成功删除！", QMessageBox.Ok)
-                        #self.refresh_message_page() #关于操作日志提示信息的显示
+                        # self.refresh_message_page() #关于操作日志提示信息的显示
 
                         print(f"删除病人信息：{patientID}")
                     else:
@@ -508,16 +508,18 @@ class PatientManageWindow(QMainWindow):
         self.listWidget.setItemWidget(item, card_widget)
 
         # 设置定时器，3秒后删除该项
-        #QTimer.singleShot(10000, lambda: self.remove_log_item(item))
+        # QTimer.singleShot(10000, lambda: self.remove_log_item(item))
 
     def remove_log_item(self, item):
         row = self.listWidget.row(item)
         self.listWidget.takeItem(row)
+
     def refresh_table(self):
         """刷新病人信息表格"""
         patient_list = self.get_all_patient_info()
         self.fill_patient_table(patient_list)
         self.create_checkBox()
+
     def create_checkBox(self):
         # 获取当前表格的行数
         rows = self.tableWidget.rowCount()
@@ -532,7 +534,8 @@ class PatientManageWindow(QMainWindow):
 
             self.tableWidget.blockSignals(False)  # 启用信号
             # 连接itemChanged信号到槽函数
-            #self.tableWidget.itemChanged.connect(self.on_checkbox_state_changed)
+            # self.tableWidget.itemChanged.connect(self.on_checkbox_state_changed)
+
 
 def main():
     app = QApplication(sys.argv)
