@@ -27,8 +27,8 @@ class DoctorUI(QMainWindow):
         # 加载 .ui 文件
         uic.loadUi("ui/doctor_window.ui", self)
 
-
-        # 初始化控件
+        # 初始化属性
+        self.patient_data = []
         self.current_page = 1
         self.items_per_page = 10
         self.viewer = None  # Will hold the current image viewer
@@ -203,7 +203,7 @@ class DoctorUI(QMainWindow):
                 result = []
 
             self.tableWidget.setRowCount(len(result))
-            self.tableWidget.setColumnCount(5)  # 5列（增加了“操作”列）
+            self.tableWidget.setColumnCount(5)  # 5列（增加了"操作"列）
             self.tableWidget.setHorizontalHeaderLabels(["ID", "姓名", "看病日期", "备注信息", "操作"])
 
             for row_idx, row_data in enumerate(result):
