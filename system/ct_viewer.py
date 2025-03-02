@@ -66,7 +66,7 @@ class CTViewer(QWidget):
         main_window = self.parent()
         self.close()
         main_window.close()
-        self.main_window = DoctorUI()
+        self.main_window = DoctorUI(1)
         self.main_window.show()
 
     def generate_model(self):

@@ -4,6 +4,8 @@ from doctor_window import DoctorUI
 import threading
 import socketio
 from WebSocket import socketio, app  # 导入 WebSocket 服务器
+from system.login_window import LoginWindow
+
 
 def run_websocket():
     """在单独的线程中运行 WebSocket 服务器"""
@@ -17,7 +19,7 @@ def main():
 
     # 启动主应用程序
     app = QApplication(sys.argv)
-    login_window = DoctorUI()
+    login_window = DoctorUI(1)
     login_window.show()
     sys.exit(app.exec_())
 
