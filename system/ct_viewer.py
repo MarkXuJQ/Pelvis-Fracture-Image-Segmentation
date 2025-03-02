@@ -60,14 +60,22 @@ class CTViewer(QWidget):
         self.setup_mouse_interaction()
 
     def back_to_MainWindow(self):
-        # 在需要时才导入 DoctorUI
-        from doctor_window import DoctorUI
-        
-        main_window = self.parent()
-        self.close()
-        main_window.close()
-        self.main_window = DoctorUI(1)
-        self.main_window.show()
+        try:
+            # 清理 VTK 资源
+            if hasattr(self, 'vtkWidget'):
+                self.vtkWidget.GetRenderWindow().Finalize()
+            
+            # 在需要时才导入 DoctorUI
+            from doctor_window import DoctorUI
+            
+            main_window = self.parent()
+            self.close()
+            main_window.close()
+            self.main_window = DoctorUI(self.user_id)
+            self.main_window.show()
+            
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
 
     def generate_model(self):
         self.render_model = True
