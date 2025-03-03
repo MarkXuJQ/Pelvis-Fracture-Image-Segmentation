@@ -23,9 +23,9 @@ os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 
 class CTViewer(QWidget):
-    def __init__(self, sitk_image,  render_model=False):
+    def __init__(self, sitk_image,  parent=None, render_model=False):
         super().__init__()
-        self.sitk_image = sitk_image
+        self.parent_window = parent  # 存储 MedicalImageViewer 实例
         self.render_model = render_model
         self.image_data = self.sitk_to_vtk_image(sitk_image)
         self.reslice_cursor = vtkResliceCursor()
@@ -61,23 +61,19 @@ class CTViewer(QWidget):
         self.setup_mouse_interaction()
 
     def back_to_MainWindow(self):
+        """返回 MedicalImageViewer 并恢复 UI"""
         try:
-            # 清理 VTK 资源
-            if hasattr(self, 'vtkWidget'):
-                self.vtkWidget.GetRenderWindow().Finalize()
+            print("返回到 MedicalImageViewer")
 
-            # 在需要时才导入 DoctorUI
-            from doctor_window import DoctorUI
-
-            main_window = self.parent()
+            # 关闭 CTViewer
             self.close()
-            main_window.close()
-            self.main_window = DoctorUI()
-            self.main_window.show()
+
+            if self.parent_window:
+                self.parent_window.show()  # 重新显示 MedicalImageViewer
+                self.parent_window.activateWindow()  # 确保窗口处于活动状态
 
         except Exception as e:
             print(f"Error during cleanup: {e}")
-
 
     def generate_model(self):
         self.render_model = True
