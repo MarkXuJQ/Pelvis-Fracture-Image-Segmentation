@@ -8,25 +8,34 @@ import numpy as np
 import vtk.util.numpy_support as vtk_np
 import vtk
 from vtkmodules.vtkCommonDataModel import vtkImageData
-from vtkmodules.vtkInteractionWidgets import vtkResliceCursor, vtkResliceCursorWidget, \
-    vtkResliceCursorLineRepresentation
+from vtkmodules.vtkInteractionWidgets import vtkResliceCursor, vtkResliceCursorWidget, vtkResliceCursorLineRepresentation
 from vtkmodules.vtkRenderingCore import vtkRenderer, vtkActor, vtkPolyDataMapper, vtkCamera
 from vtkmodules.vtkIOImage import vtkImageImport
 from vtkmodules.vtkFiltersCore import vtkMarchingCubes
 from vtkmodules.util.vtkConstants import VTK_FLOAT
 import vtkmodules.vtkInteractionStyle
 import vtkmodules.vtkRenderingOpenGL2
+from utils.file_upload import FileUploader
 
 
-# Ensures compatibility with macOS for layering issues with PyQt5 and VTK
+# Fix layering issues with PyQt5 and VTK
 os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 
 class CTViewer(QWidget):
-    def __init__(self, sitk_image,  parent=None, render_model=False):
-        super().__init__()
-        self.parent_window = parent  # 存储 MedicalImageViewer 实例
+    def __init__(self, sitk_image, parent=None, render_model=False, patient_id=None):
+        super().__init__(parent)
+        self.parent_window = parent
         self.render_model = render_model
+        self.patient_id = patient_id
+        self.sitk_image = sitk_image
+        
+        # 加载 UI
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        ui_file = os.path.join(current_dir, "ui", "ct_viewer.ui")
+        uic.loadUi(ui_file, self)
+
+        # 初始化 VTK 相关
         self.image_data = self.sitk_to_vtk_image(sitk_image)
         self.reslice_cursor = vtkResliceCursor()
         self.reslice_cursor.SetCenter(self.image_data.GetCenter())
@@ -34,11 +43,7 @@ class CTViewer(QWidget):
         self.reslice_cursor.SetThickMode(False)
         self.reslice_widgets = []
         self.reslice_representations = []
-
-        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        ui_file = os.path.join(current_dir, "system", "ui", "ct_viewer.ui")
-        
-        uic.loadUi(ui_file, self)
+        self.file_uploader = FileUploader()
 
         self.setup_sliders()
         self.Generate_Model.clicked.connect(self.generate_model)
@@ -61,30 +66,14 @@ class CTViewer(QWidget):
         self.setup_mouse_interaction()
 
     def back_to_MainWindow(self):
-    """返回 MedicalImageViewer 或切换到 DoctorUI 并恢复 UI"""
-    try:
-        print("返回到 MedicalImageViewer 或切换到 DoctorUI")
-
-        # 关闭当前窗口（CTViewer）
-        self.close()
-
-        # 清理 VTK 资源（如果存在）
-        if hasattr(self, 'vtkWidget'):
-            self.vtkWidget.GetRenderWindow().Finalize()
-
-        # 判断是否返回 MedicalImageViewer
-        if self.parent_window:
-            self.parent_window.show()  # 重新显示 MedicalImageViewer
-            self.parent_window.activateWindow()  # 确保窗口处于活动状态
+        """返回到主窗口"""
+        # 在这里动态导入，避免循环导入
+        from image_viewer_window import MedicalImageViewer
+        if hasattr(self, 'medical_image_viewer'):
+            return self.medical_image_viewer
         else:
-            # 在需要时才导入 DoctorUI
-            from doctor_window import DoctorUI
-            self.main_window = DoctorUI(self.user_id)
-            self.main_window.show()
-
-    except Exception as e:
-        print(f"Error during cleanup: {e}")
-
+            self.medical_image_viewer = MedicalImageViewer(self.patient_id)
+            return self.medical_image_viewer
 
     def generate_model(self):
         self.render_model = True

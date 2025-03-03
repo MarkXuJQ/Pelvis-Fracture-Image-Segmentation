@@ -2,6 +2,7 @@ import datetime
 import SimpleITK as sitk
 import pandas as pd
 from PyQt5 import QtCore, QtGui, QtWidgets
+import os
 
 from image_viewer_window import MedicalImageViewer
 from xray_viewer import XRayViewer
@@ -25,16 +26,17 @@ session = Session()
 
 
 class DoctorUI(QMainWindow):
-    def __init__(self,user_id):
+    def __init__(self, doctor_id):
         super().__init__()
 
+        self.doctor_id = doctor_id
         # 加载 .ui 文件
-        uic.loadUi("ui/doctor_window.ui", self)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        ui_file = os.path.join(current_dir, "ui", "doctor_window.ui")
+        uic.loadUi(ui_file, self)
 
-        self.user_id = user_id
         # 初始化属性
         self.patient_data = []
-        main
         self.current_page = 1
         self.items_per_page = 10
         self.viewer = None  # Will hold the current image viewer
@@ -307,7 +309,7 @@ class DoctorUI(QMainWindow):
 
     def open_collaboration_window(self):
         # 打开聊天合作窗口
-        self.collab_window = ChatApp(self.user_id)
+        self.collab_window = ChatApp(self.doctor_id)
         self.collab_window.show()
 
     # 定义点击事件处理函数
