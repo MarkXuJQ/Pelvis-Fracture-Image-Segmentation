@@ -3,22 +3,80 @@
  <class>LoginWindow</class>
  <widget class="QMainWindow" name="LoginWindow">
   <property name="windowTitle">
-   <string>Login</string>
+   <string>用户登录</string>
   </property>
   <property name="geometry">
    <rect>
     <x>100</x>
     <y>100</y>
-    <width>400</width>
-    <height>300</height>
+    <width>600</width>
+    <height>450</height>
    </rect>
   </property>
+  <property name="styleSheet">
+   <string>
+        QWidget {
+            background-color: #1E1E1E;
+            color: #FFFFFF;
+            font-size: 16px;
+        }
+
+        QLabel {
+            color: #E0E0E0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        QPushButton {
+            background-color: #444;
+            color: #FFFFFF;
+            border: 2px solid #5C5C5C;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 18px;
+        }
+
+        QPushButton:hover {
+            background-color: #505357;
+        }
+
+        QPushButton:pressed {
+            background-color: #606366;
+        }
+
+        QLineEdit {
+            background-color: #2E3138;
+            color: #FFFFFF;
+            border: 2px solid #5C5C5C;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 18px;
+        }
+
+        QRadioButton {
+            font-size: 18px;
+        }
+   </string>
+  </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
+   <layout class="QVBoxLayout" name="verticalLayout" stretch="0">
+    <item>
+     <spacer name="topSpacer">
+      <property name="orientation">
+       <enum>Qt::Vertical</enum>
+      </property>
+      <property name="sizeHint">
+       <size>
+        <width>20</width>
+        <height>30</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
     <item>
      <widget class="QLabel" name="user_id_label">
       <property name="text">
-       <string>ID:</string>
+       <string>账号</string>
       </property>
      </widget>
     </item>
@@ -28,7 +86,7 @@
     <item>
      <widget class="QLabel" name="password_label">
       <property name="text">
-       <string>Password:</string>
+       <string>密码</string>
       </property>
      </widget>
     </item>
@@ -42,32 +100,31 @@
     <item>
      <widget class="QLabel" name="user_type_label">
       <property name="text">
-       <string>User Type:</string>
+       <string>用户类型</string>
       </property>
      </widget>
     </item>
-    <!-- 这个部分需要修改 -->
     <item>
      <widget class="QWidget" name="user_type_widget">
       <layout class="QHBoxLayout" name="user_type_layout">
        <item>
         <widget class="QRadioButton" name="patient_radio">
          <property name="text">
-          <string>Patient</string>
+          <string>病人</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QRadioButton" name="doctor_radio">
          <property name="text">
-          <string>Doctor</string>
+          <string>医生</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QRadioButton" name="admin_radio">
          <property name="text">
-          <string>Admin</string>
+          <string>管理员</string>
          </property>
         </widget>
        </item>
@@ -75,18 +132,44 @@
      </widget>
     </item>
     <item>
+     <spacer name="midSpacer">
+      <property name="orientation">
+       <enum>Qt::Vertical</enum>
+      </property>
+      <property name="sizeHint">
+       <size>
+        <width>20</width>
+        <height>30</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+    <item>
      <widget class="QPushButton" name="login_button">
       <property name="text">
-       <string>Login</string>
+       <string>登录</string>
       </property>
      </widget>
     </item>
     <item>
      <widget class="QPushButton" name="register_button">
       <property name="text">
-       <string>Register</string>
+       <string>注册</string>
       </property>
      </widget>
+    </item>
+    <item>
+     <spacer name="bottomSpacer">
+      <property name="orientation">
+       <enum>Qt::Vertical</enum>
+      </property>
+      <property name="sizeHint">
+       <size>
+        <width>20</width>
+        <height>30</height>
+       </size>
+      </property>
+     </spacer>
     </item>
    </layout>
   </widget>

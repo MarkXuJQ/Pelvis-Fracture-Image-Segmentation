@@ -31,28 +31,6 @@ class LoginWindow(QMainWindow):
         self.setWindowTitle("用户登录")
         self.setGeometry(100, 100, 400, 300)
 
-        # 移除可能导致问题的样式表
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                padding: 5px;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QLineEdit {
-                padding: 5px;
-                border: 1px solid #BBBBBB;
-                border-radius: 3px;
-            }
-            QRadioButton {
-                spacing: 5px;
-            }
-        """)
-
         # 连接按钮事件
         self.login_button.clicked.connect(self.handle_login)
         self.register_button.clicked.connect(self.show_register_window)
