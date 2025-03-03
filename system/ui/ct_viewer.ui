@@ -6,9 +6,74 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>1200</width>
+    <height>800</height>
    </rect>
+  </property>
+  <property name="styleSheet">
+   <string>
+        QWidget {
+            background-color: #20232A;
+            color: #FFFFFF;
+            font-family: "Arial";
+            font-size: 16px;
+        }
+
+        QLabel {
+            color: #E0E0E0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        QPushButton {
+            background-color: #444;
+            color: #FFFFFF;
+            border: 1px solid #5C5C5C;
+            border-radius: 5px;
+            padding: 10px;
+        }
+
+        QPushButton:hover {
+            background-color: #505357;
+        }
+
+        QPushButton:pressed {
+            background-color: #606366;
+        }
+
+        QListWidget {
+            background-color: #2E3138;
+            color: #FFFFFF;
+            border: 1px solid #444;
+            padding: 10px;
+        }
+
+        QTableWidget {
+            background-color: #2E3138;
+            color: #FFFFFF;
+            border: 1px solid #444;
+            gridline-color: #5C5C5C;
+            alternate-background-color: #282C34;
+        }
+
+        /* 这里修改表头样式 */
+        QHeaderView::section {
+            background-color: #444;
+            color: #E0E0E0;
+            border: 1px solid #5C5C5C;
+            padding: 6px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        QFrame#centerFrame, QFrame#rightFrame {
+            background-color: #252830;
+            border: 2px solid #5C5C5C;
+            border-radius: 10px;
+            padding: 15px;
+        }
+   </string>
   </property>
   <property name="windowTitle">
    <string>CT Viewer</string>

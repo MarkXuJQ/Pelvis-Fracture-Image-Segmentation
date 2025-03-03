@@ -1,0 +1,274 @@
+<ui version="4.0">
+ <class>MedicalImageViewer</class>
+ <widget class="QMainWindow" name="MedicalImageViewer">
+  <property name="geometry">
+   <rect>
+    <x>100</x>
+    <y>100</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>查看图像</string>
+  </property>
+  <property name="styleSheet">
+   <string>
+        QWidget {
+            background-color: #20232A;
+            color: #FFFFFF;
+            font-family: "Arial";
+            font-size: 16px;
+        }
+
+        QLabel {
+            color: #E0E0E0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        QPushButton {
+            background-color: #444;
+            color: #FFFFFF;
+            border: 1px solid #5C5C5C;
+            border-radius: 5px;
+            padding: 10px;
+        }
+
+        QPushButton:hover {
+            background-color: #505357;
+        }
+
+        QPushButton:pressed {
+            background-color: #606366;
+        }
+
+        QListWidget {
+            background-color: #2E3138;
+            color: #FFFFFF;
+            border: 1px solid #444;
+            padding: 10px;
+        }
+
+        QTableWidget {
+            background-color: #2E3138;
+            color: #FFFFFF;
+            border: 1px solid #444;
+            gridline-color: #5C5C5C;
+            alternate-background-color: #282C34;
+        }
+
+        /* 这里修改表头样式 */
+        QHeaderView::section {
+            background-color: #444;
+            color: #E0E0E0;
+            border: 1px solid #5C5C5C;
+            padding: 6px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        QFrame#centerFrame, QFrame#rightFrame {
+            background-color: #252830;
+            border: 2px solid #5C5C5C;
+            border-radius: 10px;
+            padding: 15px;
+        }
+   </string>
+  </property>
+
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="mainLayout">
+    <item>
+     <widget class="QSplitter" name="mainSplitter">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <!-- 左侧：病人图像列表 -->
+      <widget class="QWidget" name="leftWidget">
+       <layout class="QVBoxLayout" name="leftLayout">
+        <item>
+         <widget class="QLabel" name="patientImageLabel">
+          <property name="text">
+           <string>病人图像</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignHCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableWidget" name="imageTable">
+          <property name="columnCount">
+           <number>3</number>
+          </property>
+          <property name="horizontalHeaderLabels">
+           <stringlist>
+            <string>名称</string>
+            <string>类型</string>
+            <string>时间</string>
+           </stringlist>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <!-- 中间：模型选择 -->
+      <widget class="QFrame" name="centerFrame">
+       <layout class="QVBoxLayout" name="centerLayout">
+        <item>
+         <widget class="QLabel" name="modelSelectLabel">
+          <property name="text">
+           <string>选择模型</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignTop|Qt::AlignHCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="centerSpacerTop">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <layout class="QVBoxLayout" name="modelSelectionLayout">
+          <item>
+           <spacer name="modelSpacerTop">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint">
+             <size>
+              <width>20</width>
+              <height>100</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="unetButton">
+            <property name="text">
+             <string>U-Net</string>
+            </property>
+            <property name="styleSheet">
+             <string>font-size: 20px;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="deeplabButton">
+            <property name="text">
+             <string>DeepLab</string>
+            </property>
+            <property name="styleSheet">
+             <string>font-size: 20px;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="transformerButton">
+            <property name="text">
+             <string>Transformer</string>
+            </property>
+            <property name="styleSheet">
+             <string>font-size: 20px;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="modelSpacerBottom">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint">
+             <size>
+              <width>20</width>
+              <height>100</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <!-- 右侧：操作按钮 -->
+      <widget class="QFrame" name="rightFrame">
+       <layout class="QVBoxLayout" name="rightLayout">
+        <item>
+         <widget class="QLabel" name="actionLabel">
+          <property name="text">
+           <string>操作</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignTop|Qt::AlignHCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="rightSpacerTop">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="backButton">
+          <property name="text">
+           <string>返回</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="splitButton">
+          <property name="text">
+           <string>分割</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="visualizeButton">
+          <property name="text">
+           <string>可视化</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="rightSpacerBottom">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

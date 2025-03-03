@@ -2,6 +2,8 @@ import datetime
 import SimpleITK as sitk
 import pandas as pd
 from PyQt5 import QtCore, QtGui, QtWidgets
+
+from image_viewer_window import MedicalImageViewer
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
 from PyQt5.QtCore import Qt
@@ -16,9 +18,11 @@ from settings_dialog import SettingsDialog
 from db_config import db_config
 
 # 创建数据库连接
-engine = create_engine(f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
+engine = create_engine(
+    f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}")
 Session = sessionmaker(bind=engine)
 session = Session()
+
 
 class DoctorUI(QMainWindow):
     def __init__(self,user_id):
@@ -30,6 +34,7 @@ class DoctorUI(QMainWindow):
         self.user_id = user_id
         # 初始化属性
         self.patient_data = []
+        main
         self.current_page = 1
         self.items_per_page = 10
         self.viewer = None  # Will hold the current image viewer
@@ -58,7 +63,7 @@ class DoctorUI(QMainWindow):
         # 设置按钮点击信号
         self.settingsButton.clicked.connect(self.show_settings_menu)
         self.chatCollaButton.clicked.connect(self.open_collaboration_window)  # 点击时打开聊天合作窗口
-
+        # self.imageViewButton.clicked.connect(self.open_image_viewer)
         # 创建菜单（悬浮按钮）
         self.settings_menu = QMenu(self)
 
@@ -115,7 +120,7 @@ class DoctorUI(QMainWindow):
         add_patient_item = QListWidgetItem("未命名")
         self.patientList.addItem(add_patient_item)
         # 点击"未命名"项时触发相应的操作
-        #add_patient_item.clicked.connect(self.add_new_patient)
+        # add_patient_item.clicked.connect(self.add_new_patient)
 
         # 设置QHBoxLayout的伸缩因子
         self.detailsLayout.setStretch(0, 1)  # 病人信息部分占 1 的比例
@@ -214,20 +219,28 @@ class DoctorUI(QMainWindow):
 
                 # **添加 "查看" 按钮**
                 view_button = QPushButton("查看图像")
-                view_button.clicked.connect(lambda _, r=row_data[0]: self.view_patient_details(r))
+                view_button.clicked.connect(lambda _, r=row_idx: self.open_image_viewer(r))  # 通过 lambda 传递参数
                 self.tableWidget.setCellWidget(row_idx, 4, view_button)  # 第 5 列（索引 4）
 
         except Exception as e:
             print(f"Error loading data from database: {e}")
 
+    def open_image_viewer(self, row):
+        """打开医学图像查看窗口"""
+        patient_id = self.tableWidget.item(row, 0).text()  # 获取病人 ID
+        self.viewer = MedicalImageViewer(patient_id)  # 创建医学图像查看窗口实例
+        self.viewer.show()
+
     def view_patient_details(self, patient_id):
         """处理查看按钮的点击事件"""
         print(f"查看病人 {patient_id} 的详细信息")
+
     def open_settings(self):
         dialog = SettingsDialog(self, render_on_open=self.render_on_open)
         if dialog.exec_():
             settings = dialog.get_settings()
             self.render_on_open = settings['render_on_open']
+
     def update_table(self):
         """更新表格内容并设置分页"""
         self.tableWidget.setRowCount(0)
@@ -296,6 +309,7 @@ class DoctorUI(QMainWindow):
         # 打开聊天合作窗口
         self.collab_window = ChatApp(self.user_id)
         self.collab_window.show()
+
     # 定义点击事件处理函数
     def on_patient_item_clicked(self, item):
         # 获取点击项的文本内容
@@ -441,7 +455,7 @@ class DoctorUI(QMainWindow):
     def cancel_search(self):
         """取消搜索并还原表格数据"""
         self.searchBox.clear()  # 清空搜索框
-        self.load_data_from_database() # 还原表格数据
+        self.load_data_from_database()  # 还原表格数据
 
     def open_image(self):
         # Open file dialog to select image
@@ -472,7 +486,7 @@ class DoctorUI(QMainWindow):
             self.setCentralWidget(self.viewer)
             self.statusBar().showMessage(f'Loaded image: {file_path}')
             self.current_file_path = file_path  # Store the current file path
-            #self.save_as_action.setEnabled(True)  # Enable "Save As"
+            # self.save_as_action.setEnabled(True)  # Enable "Save As"
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load image:\n{str(e)}")
 
