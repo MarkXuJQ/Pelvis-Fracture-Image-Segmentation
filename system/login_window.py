@@ -69,19 +69,24 @@ class LoginWindow(QMainWindow):
 
     def open_doctor_main(self, doctor_id):
         print("进入医生主页面")
-        self.main_window = DoctorUI()
+        self.main_window = DoctorUI(doctor_id)
         self.main_window.show()
+        #测试实时聊天
+        '''self.main_window1 = DoctorUI(1)
+        self.main_window2 = DoctorUI(2)
+        self.main_window1.show()
+        self.main_window2.show()'''
         self.close()
 
     def open_patient_main(self, patient_id):
         print("进入病人主页面")
-        self.main_window = PatientUI()
+        self.main_window = PatientUI(patient_id)
         self.main_window.show()
         self.close()
 
     def open_admin_main(self, admin_id):
         print("进入管理员主页面")
-        self.main_window = MainWindow()
+        self.main_window = MainWindow(admin_id)
         self.main_window.show()
         self.close()
 

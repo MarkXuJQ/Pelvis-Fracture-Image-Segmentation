@@ -628,6 +628,16 @@ insert_task(
     status="pending"
 )
 
+insert_task(
+    task_id=3,
+    task_title="Review Medication Plan",
+    task_description="Evaluate the patient's current medication plan and suggest adjustments if needed.",
+    assigned_doctor_id=1,
+    patient_id="P00002",
+    due_date="2025-03-02 10:30:00",
+    status="in_progress"
+)
+
 # 在程序启动时初始化数据库
 if __name__ == "__main__":
     init_database()
