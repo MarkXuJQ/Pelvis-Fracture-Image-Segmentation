@@ -51,6 +51,28 @@ def handle_message(data):
     # 返回消息给客户端
     emit('receive_message', data, broadcast=True)
 
+@socketio.on('get_doctors_except_user')
+def get_doctors_except_user(data):
+    """查询数据库，返回除了当前 user_id 以外的所有医生"""
+    doctor_id = data['user_id']
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        query = """
+            SELECT doctor_id, doctor_name FROM doctors
+            WHERE doctor_id != %s
+        """
+        cursor.execute(query, (doctor_id,))
+        doctors = [{'doctor_id': row[0], 'doctor_name': row[1]} for row in cursor.fetchall()]
+
+        # 发送医生列表给客户端
+        emit('doctors_list', {'doctors': doctors}, broadcast=False)
+
+    except pymysql.MySQLError as e:
+        logging.error(f"获取医生列表失败: {e}")
+    finally:
+        cursor.close()
+        connection.close()
 
 # 获取聊天记录
 # 假设有一个 WebSocket 服务器：

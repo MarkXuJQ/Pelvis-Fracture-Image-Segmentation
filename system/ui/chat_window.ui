@@ -1,0 +1,108 @@
+<ui version="4.0">
+ <class>DoctorUI</class>
+ <widget class="QMainWindow" name="ChatApp">
+  <property name="geometry">
+   <rect>
+    <x>100</x>
+    <y>100</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>聊天合作界面</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="mainLayout">
+    <!-- 顶部导航栏 -->
+    <item>
+     <layout class="QHBoxLayout" name="topLayout">
+      <item>
+       <widget class="QPushButton" name="settingsButton">
+        <property name="text">
+         <string>设置</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="viewButton">
+        <property name="text">
+         <string>视图</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </item>
+    <!-- 主布局 -->
+    <item>
+     <layout class="QHBoxLayout" name="mainChatLayout">
+      <!-- 左侧选项 -->
+      <item>
+       <widget class="QWidget" name="leftWidget">
+        <layout class="QVBoxLayout" name="leftLayout">
+         <item>
+          <widget class="QListWidget" name="tabsList">
+           <item>
+            <property name="text">
+             <string>消息</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>任务</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>文档</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>笔记</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <!-- 中间欢迎信息 -->
+      <item>
+       <widget class="QWidget" name="centerWidget">
+        <layout class="QVBoxLayout" name="centerLayout">
+         <item>
+          <widget class="QLabel" name="welcomeLabel">
+           <property name="text">
+            <string>欢迎使用！请选择一个功能或标签。</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <!-- 右侧内容区域 -->
+      <item>
+       <widget class="QWidget" name="rightWidget">
+        <layout class="QVBoxLayout" name="rightLayout">
+         <item>
+          <widget class="QWidget" name="rightContent"/>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
