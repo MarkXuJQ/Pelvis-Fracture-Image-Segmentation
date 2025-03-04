@@ -17,13 +17,12 @@ from vtkmodules.util.vtkConstants import VTK_FLOAT
 import vtkmodules.vtkInteractionStyle
 import vtkmodules.vtkRenderingOpenGL2
 
-
 # Ensures compatibility with macOS for layering issues with PyQt5 and VTK
 os.environ["QT_MAC_WANTS_LAYER"] = "1"
 
 
 class CTViewer(QWidget):
-    def __init__(self, sitk_image,  parent=None, render_model=False):
+    def __init__(self, sitk_image, parent=None, render_model=False):
         super().__init__()
         self.parent_window = parent  # 存储 MedicalImageViewer 实例
         self.render_model = render_model
@@ -37,7 +36,7 @@ class CTViewer(QWidget):
 
         current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         ui_file = os.path.join(current_dir, "system", "ui", "ct_viewer.ui")
-        
+
         uic.loadUi(ui_file, self)
 
         self.setup_sliders()
@@ -61,30 +60,31 @@ class CTViewer(QWidget):
         self.setup_mouse_interaction()
 
     def back_to_MainWindow(self):
-    """返回 MedicalImageViewer 或切换到 DoctorUI 并恢复 UI"""
-    try:
-        print("返回到 MedicalImageViewer 或切换到 DoctorUI")
+        """返回 MedicalImageViewer 或切换到 DoctorUI"""
+        try:
+            print("返回 MedicalImageViewer")
 
-        # 关闭当前窗口（CTViewer）
-        self.close()
+            # ✅ 先释放 VTK 资源，避免内存泄漏
+            if hasattr(self, "vtkWidget"):
+                self.vtkWidget.GetRenderWindow().Finalize()
+                self.vtkWidget.SetParent(None)
+                self.vtkWidget.deleteLater()
+                print("VTK 资源已释放")
 
-        # 清理 VTK 资源（如果存在）
-        if hasattr(self, 'vtkWidget'):
-            self.vtkWidget.GetRenderWindow().Finalize()
+            self.close()  # 关闭 CTViewer 窗口
 
-        # 判断是否返回 MedicalImageViewer
-        if self.parent_window:
-            self.parent_window.show()  # 重新显示 MedicalImageViewer
-            self.parent_window.activateWindow()  # 确保窗口处于活动状态
-        else:
-            # 在需要时才导入 DoctorUI
-            from doctor_window import DoctorUI
-            self.main_window = DoctorUI(self.user_id)
-            self.main_window.show()
+            # ✅ 重新显示 `MedicalImageViewer`
+            if self.parent_window:
+                self.parent_window.show()
+                self.parent_window.activateWindow()
+            else:
+                # ✅ 如果 parent_window 不存在，则打开 `DoctorUI`
+                from doctor_window import DoctorUI
+                self.main_window = DoctorUI()
+                self.main_window.show()
 
-    except Exception as e:
-        print(f"Error during cleanup: {e}")
-
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
 
     def generate_model(self):
         self.render_model = True

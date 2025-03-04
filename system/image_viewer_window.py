@@ -177,7 +177,6 @@ class MedicalImageViewer(QMainWindow):
                 return
             self.viewer.show()
             # self.hide()  # 隐藏 MedicalImageViewer 窗口
-            # self.setCentralWidget(self.viewer)
             self.statusBar().showMessage(f'Loaded image: {abs_path}')
             print(f"成功加载图像: {abs_path}")  # 调试信息
 
