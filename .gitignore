@@ -11,8 +11,14 @@
 *.pth
 
 # Ignore any compiled files
-*.pyc
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 
 # Ignore model checkpoints and outputs (if applicable)
 /ct_seg/outputs/
 /ct_seg/models/chatgptPrompts.md
+
+*.mha
+temp_*

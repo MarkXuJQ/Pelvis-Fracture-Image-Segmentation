@@ -1,25 +1,36 @@
 import sys
-
+import os
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QHeaderView, QTableWidgetItem
 from PyQt5.uic import loadUi
-
 import SimpleITK as sitk
-import os
-
 from sqlalchemy.dialects.mysql import pymysql
-
 from ct_viewer import CTViewer
 from system.db_manager import get_connection
 from xray_viewer import XRayViewer
+from utils.file_upload import FileUploader
+import tempfile
+from utils.download_thread import DownloadThread
+from utils.progress_dialog import UploadProgressDialog
 
 
 class MedicalImageViewer(QMainWindow):
     def __init__(self, patient_id=None):
         super().__init__()
-        loadUi("ui/image_viewer_window.ui", self)  # 加载 .ui 文件
+        # 获取当前文件的目录
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # 构建UI文件的完整路径
+        ui_file = os.path.join(current_dir, "ui", "image_viewer_window.ui")
+        
+        try:
+            loadUi(ui_file, self)  # 加载 .ui 文件
+        except FileNotFoundError:
+            QMessageBox.critical(self, "错误", f"找不到UI文件: {ui_file}")
+            return
+            
         self.patient_id = patient_id  # 存储病人 ID
         self.selected_image_path = None  # 初始化存储选中图像路径
+        self.file_uploader = FileUploader()
         self.initUI()
         self.load_patient_images()  # 载入病人图像数据
 
@@ -36,13 +47,14 @@ class MedicalImageViewer(QMainWindow):
         self.visualizeButton.clicked.connect(self.visualize_results)
 
         # 初始化表格
-        self.imageTable.setColumnCount(3)  # 三列（图像名、类型、时间）
-        self.imageTable.setHorizontalHeaderLabels(["名称", "类型", "时间"])
+        self.imageTable.setColumnCount(4)  # 四列（图像名、类型、时间、路径）
+        self.imageTable.setHorizontalHeaderLabels(["名称", "类型", "时间", "路径"])
         # 让三列宽度均分表格的宽度
         header = self.imageTable.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
 
         # 监听表格点击事件，获取选中的图像路径
         self.imageTable.cellClicked.connect(self.image_selected)
@@ -66,77 +78,120 @@ class MedicalImageViewer(QMainWindow):
             QMessageBox.critical(self, "错误", f"无法加载图像: {str(e)}")
 
     def load_patient_images(self):
-        """从数据库加载该病人的医学图像列表"""
+        """加载病人的所有图像记录"""
         try:
-            connection = get_connection()  # 获取数据库连接
-            if not connection:
-                QMessageBox.critical(self, "数据库错误", "无法连接到数据库！")
-                return
-
-            cursor = connection.cursor()
-
-            # 查询病人的所有医学图像
-            query = """
-            SELECT image_name, modality, upload_date 
-            FROM patient_images 
-            WHERE patient_id = %s
-            ORDER BY upload_date DESC
-            """
-            cursor.execute(query, (self.patient_id,))
-            results = cursor.fetchall()
-
-            # 清空表格并插入新数据
-            self.imageTable.setRowCount(0)  # 清空表格
-
-            for row_idx, row_data in enumerate(results):
-                self.imageTable.insertRow(row_idx)  # 添加新行
-
-                for col_idx, value in enumerate(row_data):
-                    item = QTableWidgetItem(str(value))
-                    item.setTextAlignment(Qt.AlignCenter)  # 文字居中
-                    self.imageTable.setItem(row_idx, col_idx, item)
-
-            cursor.close()
-            connection.close()
-
-        except pymysql.MySQLError as e:
-            QMessageBox.critical(self, "数据库错误", f"加载图像列表失败: {str(e)}")
-
-    def image_selected(self, row, column):
-        """当用户点击表格中的一行时，获取图像路径"""
-        try:
-            image_name = self.imageTable.item(row, 0).text()  # 第一列是图像名称
-            modality = self.imageTable.item(row, 1).text()  # 第二列是图像类型
-
-            # 获取数据库中的图像路径
             connection = get_connection()
-            if not connection:
-                QMessageBox.critical(self, "数据库错误", "无法连接到数据库！")
-                return
-
             cursor = connection.cursor()
-            query = "SELECT image_path FROM patient_images WHERE patient_id = %s AND image_name = %s"
-            cursor.execute(query, (self.patient_id, image_name))
-            result = cursor.fetchone()
+            
+            # 查询病人的所有图像
+            cursor.execute("""
+                SELECT image_name, modality, image_path, upload_date 
+                FROM patient_images 
+                WHERE patient_id = %s
+                ORDER BY upload_date DESC
+            """, (self.patient_id,))
+            
+            images = cursor.fetchall()
+            
+            # 清空表格
+            self.imageTable.setRowCount(0)
+            
+            # 填充表格
+            for row, (image_name, modality, image_path, upload_date) in enumerate(images):
+                self.imageTable.insertRow(row)
+                self.imageTable.setItem(row, 0, QTableWidgetItem(image_name))
+                self.imageTable.setItem(row, 1, QTableWidgetItem(modality))
+                self.imageTable.setItem(row, 2, QTableWidgetItem(str(upload_date)))
+                # 存储图像路径（隐藏）
+                path_item = QTableWidgetItem(image_path)
+                self.imageTable.setItem(row, 3, path_item)
+                
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"加载图像记录失败：{str(e)}")
+        finally:
             cursor.close()
             connection.close()
 
-            if result:
-                self.selected_image_path = result[0]  # 存储图像路径
-                print(f"选中的图像路径: {self.selected_image_path}")
-            else:
-                QMessageBox.warning(self, "图像未找到", f"无法找到 {image_name} 的存储路径。")
+    def load_medical_image(self, image_path, modality):
+        """加载医学图像"""
+        try:
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mha') as temp_file:
+                temp_path = temp_file.name
+
+            # 创建进度对话框
+            self.progress_dialog = UploadProgressDialog(self)
+            self.progress_dialog.setWindowTitle("下载进度")
+            self.progress_dialog.status_label.setText("正在下载图像...")
+            self.progress_dialog.show()
+
+            # 创建下载线程
+            self.download_thread = DownloadThread(image_path, temp_path)
+            self.download_thread.progress.connect(self.progress_dialog.update_progress)
+            self.download_thread.finished.connect(
+                lambda image, success, message: self.on_download_finished(
+                    image, success, message, temp_path, modality
+                )
+            )
+            self.download_thread.start()
 
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"选取图像失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"加载图像失败：{str(e)}")
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
-    # def open_image(self):
-    #     # Open file dialog to select image
-    #     options = QFileDialog.Options()
-    #     file_types = "All Files (*);;DICOM Files (*.dcm);;NIfTI Files (*.nii *.nii.gz);;NRRD Files (*.nrrd);;MetaImage Files (*.mha *.mhd)"
-    #     file_path, _ = QFileDialog.getOpenFileName(self, "Open Image File", "", file_types, options=options)
-    #     if file_path:
-    #         self.load_image(file_path)
+    def on_download_finished(self, image, success, message, temp_path, modality):
+        """下载完成的回调"""
+        try:
+            # 关闭进度对话框
+            if hasattr(self, 'progress_dialog'):
+                self.progress_dialog.close()
+                self.progress_dialog.deleteLater()
+
+            if success and image is not None:
+                # 根据模态类型显示图像
+                if modality.upper() == 'CT':
+                    self.show_ct_viewer(image)
+                elif modality.upper() == 'XRAY':
+                    self.show_xray_viewer(image)
+            else:
+                QMessageBox.critical(self, "错误", f"加载图像失败：{message}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"显示图像失败：{str(e)}")
+        finally:
+            # 清理临时文件
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def image_selected(self, row, column):
+        """当用户选择一个图像时"""
+        try:
+            # 获取选中行的图像信息
+            image_path = self.imageTable.item(row, 3).text()  # 获取存储的路径
+            modality = self.imageTable.item(row, 1).text()    # 获取模态类型
+            
+            # 加载并显示图像
+            self.load_medical_image(image_path, modality)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"打开图像失败：{str(e)}")
+
+    def show_ct_viewer(self, image):
+        """显示CT图像查看器"""
+        try:
+            ct_viewer = CTViewer(image, self, patient_id=self.patient_id)
+            self.setCentralWidget(ct_viewer)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"显示CT图像失败：{str(e)}")
+
+    def show_xray_viewer(self, image):
+        """显示X光图像查看器"""
+        try:
+            xray_viewer = XRayViewer(image, self, patient_id=self.patient_id)
+            self.setCentralWidget(xray_viewer)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"显示X光图像失败：{str(e)}")
 
     def get_absolute_path(self, image_path):
         """将数据库存储的相对路径转换为当前项目的绝对路径"""

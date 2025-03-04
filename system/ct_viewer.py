@@ -1,7 +1,7 @@
 import sys
 import os
 from PyQt5 import uic
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QMessageBox, QPushButton, QInputDialog, QProgressBar, QLabel
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import SimpleITK as sitk
 import numpy as np
@@ -16,10 +16,41 @@ from vtkmodules.util.vtkConstants import VTK_FLOAT
 import vtkmodules.vtkInteractionStyle
 import vtkmodules.vtkRenderingOpenGL2
 from utils.file_upload import FileUploader
+from datetime import datetime
+from db_manager import get_connection
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer
+from utils.progress_dialog import UploadProgressDialog
 
 
 # Fix layering issues with PyQt5 and VTK
 os.environ["QT_MAC_WANTS_LAYER"] = "1"
+
+
+class UploadThread(QThread):
+    upload_finished = pyqtSignal(bool, str)  # 上传完成信号
+    upload_progress = pyqtSignal(float)      # 上传进度信号
+
+    def __init__(self, file_path, patient_id, image_type):
+        super().__init__()
+        self.file_path = file_path
+        self.patient_id = patient_id
+        self.image_type = image_type
+        self.file_uploader = FileUploader()
+
+    def run(self):
+        try:
+            relative_path = self.file_uploader.upload_medical_image(
+                self.file_path,
+                self.patient_id,
+                self.image_type,
+                self.update_progress
+            )
+            self.upload_finished.emit(True, relative_path)
+        except Exception as e:
+            self.upload_finished.emit(False, str(e))
+
+    def update_progress(self, progress):
+        self.upload_progress.emit(progress)
 
 
 class CTViewer(QWidget):
@@ -64,6 +95,21 @@ class CTViewer(QWidget):
 
         # Setup mouse interaction for all views
         self.setup_mouse_interaction()
+
+        # 添加上传按钮
+        self.upload_button = QPushButton("上传CT图像", self)
+        self.upload_button.clicked.connect(self.upload_ct_image)
+        
+        # 移除之前的进度条和状态标签
+        self.progress_dialog = None
+
+        # 将按钮添加到布局
+        if hasattr(self, 'layout'):
+            self.layout().addWidget(self.upload_button)
+        else:
+            layout = QVBoxLayout()
+            layout.addWidget(self.upload_button)
+            self.setLayout(layout)
 
     def back_to_MainWindow(self):
         """返回到主窗口"""
@@ -371,6 +417,92 @@ class CTViewer(QWidget):
         for rep in self.reslice_representations:
             rep.SetWindowLevel(self.window_width, self.window_level)
             rep.GetResliceCursorWidget().Render()
+
+    def upload_ct_image(self):
+        try:
+            if not hasattr(self, 'sitk_image'):
+                QMessageBox.warning(self, "警告", "请先加载CT图像！")
+                return
+
+            # 如果没有病人ID，弹出输入框
+            if not self.patient_id:
+                patient_id, ok = QInputDialog.getText(
+                    self, 
+                    "输入病人ID", 
+                    "请输入病人ID:",
+                    text=""
+                )
+                if ok and patient_id:
+                    self.patient_id = patient_id
+                else:
+                    return
+
+            # 保存临时文件
+            temp_file = "temp_ct.mha"
+            sitk.WriteImage(self.sitk_image, temp_file)
+
+            # 创建并显示进度对话框
+            self.progress_dialog = UploadProgressDialog(self)
+            self.progress_dialog.show()
+
+            # 创建并启动上传线程
+            self.upload_thread = UploadThread(temp_file, self.patient_id, 'ct')
+            self.upload_thread.upload_finished.connect(self.on_upload_finished)
+            self.upload_thread.upload_progress.connect(self.progress_dialog.update_progress)
+            self.upload_button.setEnabled(False)
+            self.upload_thread.start()
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"准备上传失败：{str(e)}")
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+
+    def on_upload_finished(self, success, message):
+        """上传完成的回调函数"""
+        try:
+            self.upload_button.setEnabled(True)
+            
+            if success:
+                image_name = f"CT_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mha"
+                self._save_to_database(image_name, message, 'CT')
+                if self.progress_dialog:
+                    self.progress_dialog.close()
+                QMessageBox.information(self, "成功", f"CT图像上传成功！\n病人ID: {self.patient_id}")
+            else:
+                if self.progress_dialog:
+                    self.progress_dialog.close()
+                QMessageBox.critical(self, "错误", f"上传失败：{message}")
+
+        finally:
+            # 清理临时文件
+            temp_file = "temp_ct.mha"
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            
+            # 清理进度对话框
+            if self.progress_dialog:
+                self.progress_dialog.deleteLater()
+                self.progress_dialog = None
+
+    def _save_to_database(self, image_name, image_path, modality):
+        """保存图像信息到数据库"""
+        connection = get_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO patient_images 
+                (patient_id, image_name, image_path, modality) 
+                VALUES (%s, %s, %s, %s)
+            """, (
+                self.patient_id,
+                image_name,
+                image_path,
+                modality
+            ))
+            connection.commit()
+        finally:
+            cursor.close()
+            connection.close()
 
 
 # Main execution of the application
