@@ -168,16 +168,15 @@ class MedicalImageViewer(QMainWindow):
 
             if dimension == 2:
                 image_array = sitk.GetArrayFromImage(self.image)
-                self.viewer = XRayViewer(image_array)
+                self.viewer = XRayViewer(image_array, parent_window=self)
             elif dimension == 3:
-                self.viewer = CTViewer(self.image)
                 self.viewer = CTViewer(self.image, parent=self)  # 传递 self 作为 parent
-
+                self.hide()
             else:
                 QMessageBox.warning(self, "不支持的图像", "选中的图像格式不支持。")
                 return
             self.viewer.show()
-            self.hide()  # 隐藏 MedicalImageViewer 窗口
+            # self.hide()  # 隐藏 MedicalImageViewer 窗口
             # self.setCentralWidget(self.viewer)
             self.statusBar().showMessage(f'Loaded image: {abs_path}')
             print(f"成功加载图像: {abs_path}")  # 调试信息

@@ -65,6 +65,12 @@ class CTViewer(QWidget):
         try:
             print("返回到 MedicalImageViewer")
 
+            if hasattr(self, "vtkWidget"):
+                self.vtkWidget.GetRenderWindow().Finalize()  # ✅ 释放 OpenGL 资源
+                self.vtkWidget.SetParent(None)
+                self.vtkWidget.deleteLater()  # ✅ 确保对象被正确销毁
+                print("VTK 资源已释放")
+
             # 关闭 CTViewer
             self.close()
 

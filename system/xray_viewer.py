@@ -1,18 +1,31 @@
 # xray_viewer.py
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QApplication
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import vtk
 import vtk.util.numpy_support as vtk_np
 import numpy as np
 
+
 class XRayViewer(QWidget):
-    def __init__(self, image_array):
+    def __init__(self, image_array, parent_window=None):
         super().__init__()
         self.image_array = image_array
+        self.parent_window = parent_window  # ✅ 记录 MedicalImageViewer 窗口
         self.initUI()
 
     def initUI(self):
+        self.resize(800, 600)  # 默认 800x600
+        self.setMinimumSize(600, 400)  # 最小 600x400
+
+        height, width = self.image_array.shape[:2]  # 获取图像尺寸
+        screen = QApplication.primaryScreen().availableGeometry()
+
+        new_width = min(width + 100, screen.width())
+        new_height = min(height + 100, screen.height())
+
+        self.resize(new_width, new_height)  # ✅ 适应图像大小
+
         # Create VTK widget and renderer
         self.vtkWidget = QVTKRenderWindowInteractor(self)
         self.renderer = vtk.vtkRenderer()
@@ -35,6 +48,24 @@ class XRayViewer(QWidget):
         self.vtkWidget.Initialize()
         self.vtkWidget.Start()
 
+    def closeEvent(self, event):
+        """ ✅ 关闭 XRayViewer 时释放 VTK 资源 """
+        try:
+            if hasattr(self, "vtkWidget"):
+                self.vtkWidget.GetRenderWindow().Finalize()  # ✅ 释放 OpenGL 资源
+                self.vtkWidget.SetParent(None)
+                self.vtkWidget.deleteLater()  # ✅ 确保对象被正确销毁
+                print("VTK 资源已释放")
+
+            if self.parent_window:
+                print("返回 MedicalImageViewer")
+                self.parent_window.show()
+                self.parent_window.activateWindow()
+
+            event.accept()  # 允许窗口关闭
+        except Exception as e:
+            print(f"关闭窗口时出错: {e}")
+
     def numpy_to_vtk_image(self, image):
         # Handle possible multiple channels
         print(image.ndim)
@@ -50,7 +81,6 @@ class XRayViewer(QWidget):
 
         # Normalize image data
         normalized_image = self.normalize_image(image)
-
 
         # Convert to VTK image data
         vtk_data_array = vtk_np.numpy_to_vtk(
@@ -70,10 +100,10 @@ class XRayViewer(QWidget):
         if max_val - min_val == 0:
             normalized = np.zeros(image_array.shape, dtype=np.uint8)
         else:
-            #Use gamma correction to apply normalization
-            gamma=0.25
-            normalized=np.power(image_array/np.max(image_array),gamma)*255
-            normalized=normalized.astype(np.uint8)
+            # Use gamma correction to apply normalization
+            gamma = 0.25
+            normalized = np.power(image_array / np.max(image_array), gamma) * 255
+            normalized = normalized.astype(np.uint8)
 
         return normalized
 
