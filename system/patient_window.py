@@ -15,12 +15,12 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 class PatientUI(QMainWindow):
-    def __init__(self):
+    def __init__(self,user_id):
         super().__init__()
 
         # Load the .ui file
         uic.loadUi("ui/patient_window.ui", self)
-
+        self.user_id = user_id
         # 初始化控件
         self.current_page = 1
         self.items_per_page = 10
@@ -311,7 +311,7 @@ class PatientUI(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = PatientUI()  # Create the DoctorUI instance
+    window = PatientUI("P00001")  # Create the DoctorUI instance
     window.show()  # Display the window
     sys.exit(app.exec_())  # Run the application's event loop
 

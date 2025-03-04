@@ -25,13 +25,16 @@ session = Session()
 
 
 class DoctorUI(QMainWindow):
-    def __init__(self):
+    def __init__(self,user_id):
         super().__init__()
 
         # 加载 .ui 文件
         uic.loadUi("ui/doctor_window.ui", self)
 
-        # 初始化控件
+        self.user_id = user_id
+        # 初始化属性
+        self.patient_data = []
+        main
         self.current_page = 1
         self.items_per_page = 10
         self.viewer = None  # Will hold the current image viewer
@@ -206,7 +209,7 @@ class DoctorUI(QMainWindow):
                 result = []
 
             self.tableWidget.setRowCount(len(result))
-            self.tableWidget.setColumnCount(5)  # 5列（增加了“操作”列）
+            self.tableWidget.setColumnCount(5)  # 5列（增加了"操作"列）
             self.tableWidget.setHorizontalHeaderLabels(["ID", "姓名", "看病日期", "备注信息", "操作"])
 
             for row_idx, row_data in enumerate(result):
@@ -304,7 +307,7 @@ class DoctorUI(QMainWindow):
 
     def open_collaboration_window(self):
         # 打开聊天合作窗口
-        self.collab_window = ChatApp()
+        self.collab_window = ChatApp(self.user_id)
         self.collab_window.show()
 
     # 定义点击事件处理函数
@@ -345,7 +348,6 @@ class DoctorUI(QMainWindow):
         # 获取选中行的病人 ID
         patient_id = self.tableWidget.item(row, 0).text()
         try:
-            print(2)
             # 查询病人信息
             patient_query = text("""
                         SELECT patient_name, gender, age, phone_number, date_of_birth
@@ -354,7 +356,6 @@ class DoctorUI(QMainWindow):
             patient_result = session.execute(patient_query, {"patient_id": patient_id}).fetchone()
             print("Patient Result:", patient_result)
 
-            print(3)
             # 查询病人的骨折病史信息
             history_query = text("""
                        SELECT fracture_date, fracture_location, severity_level, diagnosis_details
@@ -363,17 +364,14 @@ class DoctorUI(QMainWindow):
 
             history_results = session.execute(history_query, {"patient_id": patient_id}).fetchall()
 
-            print(4)
             # 设置病人基本信息
             if patient_result:
-                print(6)
                 # 提取字段值，并处理可能为 None 的情况
                 patient_name = patient_result[0] if patient_result[0] else "未知"
                 gender = patient_result[1] if patient_result[1] else "未知"
                 age = patient_result[2] if patient_result[2] is not None else "未知"
                 phone_number = patient_result[3] if patient_result[3] else "未知"
                 date_of_birth = patient_result[4].strftime('%Y-%m-%d') if patient_result[4] else "未知"
-                print(7)
                 # 格式化病人信息
                 patient_details = (
                     f"病人信息：\n"
@@ -384,11 +382,9 @@ class DoctorUI(QMainWindow):
                     f"出生日期：{date_of_birth}\n"
                 )
                 self.patientInfoLabel.setText(patient_details)
-                print(5)  # 调试信息
             else:
                 self.patientInfoLabel.setText("病人信息：\n未找到病人信息")
                 print("未找到病人信息")
-            print(5)
             # 设置病人病史信息
             if history_results:
                 history_details = "病人病史：\n"
@@ -401,10 +397,8 @@ class DoctorUI(QMainWindow):
                     )
                 self.patientHistoryLabel.setText(history_details.strip())
                 self.load_patients_to_list(row)
-                print(8)
             else:
                 self.patientHistoryLabel.setText("病人病史：\n无病史记录")
-            print(9)
         except Exception as e:
             print(f"Error fetching patient details: {e}")
             self.reset_details()
@@ -501,6 +495,6 @@ if __name__ == "__main__":
     import sys
 
     app = QApplication(sys.argv)
-    window = DoctorUI()
+    window = DoctorUI(1)
     window.show()
     sys.exit(app.exec_())

@@ -35,8 +35,8 @@ class CTViewer(QWidget):
         self.reslice_widgets = []
         self.reslice_representations = []
 
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        ui_file = os.path.join(current_dir, "ui", "ct_viewer.ui")
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ui_file = os.path.join(current_dir, "system", "ui", "ct_viewer.ui")
         
         uic.loadUi(ui_file, self)
 
@@ -61,25 +61,30 @@ class CTViewer(QWidget):
         self.setup_mouse_interaction()
 
     def back_to_MainWindow(self):
-        """返回 MedicalImageViewer 并恢复 UI"""
-        try:
-            print("返回到 MedicalImageViewer")
+    """返回 MedicalImageViewer 或切换到 DoctorUI 并恢复 UI"""
+    try:
+        print("返回到 MedicalImageViewer 或切换到 DoctorUI")
 
-            if hasattr(self, "vtkWidget"):
-                self.vtkWidget.GetRenderWindow().Finalize()  # ✅ 释放 OpenGL 资源
-                self.vtkWidget.SetParent(None)
-                self.vtkWidget.deleteLater()  # ✅ 确保对象被正确销毁
-                print("VTK 资源已释放")
+        # 关闭当前窗口（CTViewer）
+        self.close()
 
-            # 关闭 CTViewer
-            self.close()
+        # 清理 VTK 资源（如果存在）
+        if hasattr(self, 'vtkWidget'):
+            self.vtkWidget.GetRenderWindow().Finalize()
 
-            if self.parent_window:
-                self.parent_window.show()  # 重新显示 MedicalImageViewer
-                self.parent_window.activateWindow()  # 确保窗口处于活动状态
+        # 判断是否返回 MedicalImageViewer
+        if self.parent_window:
+            self.parent_window.show()  # 重新显示 MedicalImageViewer
+            self.parent_window.activateWindow()  # 确保窗口处于活动状态
+        else:
+            # 在需要时才导入 DoctorUI
+            from doctor_window import DoctorUI
+            self.main_window = DoctorUI(self.user_id)
+            self.main_window.show()
 
-        except Exception as e:
-            print(f"Error during cleanup: {e}")
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+
 
     def generate_model(self):
         self.render_model = True
