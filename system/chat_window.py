@@ -3,9 +3,11 @@ import json
 
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import (
-    QApplication, QListView, QWidget, QVBoxLayout, QLabel, QPushButton, QMenu, QStyleOptionViewItem, QStyledItemDelegate
+    QApplication, QListView, QWidget, QVBoxLayout, QLabel, QPushButton, QMenu, QStyleOptionViewItem,
+    QStyledItemDelegate, QSpacerItem, QSizePolicy
 )
 from PyQt5.QtCore import Qt, QSize
+import os
 import socketio
 from PyQt5 import uic
 from PyQt5.QtCore import Qt
@@ -15,63 +17,49 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QLineEdit, QPu
 from qasync import QEventLoop
 import asyncio
 from delegate import  TaskItemDelegate
-
+from stylesheet import apply_stylesheet
 
 class ChatApp(QMainWindow):
     def __init__(self,user_id):
         super().__init__()
-        #self.apply_stylesheet()
-        self.user_id = user_id
+        apply_stylesheet(self)
+
         self.sio = socketio.Client()
         self.sio.connect('http://localhost:5000')
         self.sender_id = user_id
         self.receiver_id = None
-        self.chatlayout()
+        self.receiver_name = None
 
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        ui_file = os.path.join(current_dir, "ui", "chat_window.ui")
+        uic.loadUi(ui_file, self)
+        self.adjustlayout()
         # 设置 Socket.IO 事件
         self.sio.on('receive_message', self.on_receive_message)
         self.sio.on('chat_history', self.on_chat_history)
         self.sio.on('task_created', self.on_task_created)
         self.sio.on('task_list',self.on_task_list)
+        self.sio.on('doctors_list',self.on_doctor_list)
 
-    def chatlayout(self):
-        self.setWindowTitle('聊天信息界面')
-        self.setGeometry(0, 0, 1200, 800)
-        self.central_widget = QWidget(self)
-        self.setCentralWidget(self.central_widget)
+    def adjustlayout(self):
+        # 假设这是主窗口的布局
+        layout = self.findChild(QHBoxLayout, "mainChatLayout")
+        layout.setStretchFactor(self.leftWidget, 2)
+        layout.setStretchFactor(self.centerWidget, 4)
+        layout.setStretchFactor(self.rightWidget, 5)
+        # 为布局设置边距
+        layout.setContentsMargins(10, 2, 10, 10)  # 左上右下的间距为10像素
+        # 获取布局
+        topLayout = self.findChild(QHBoxLayout, "topLayout")
+        # 为布局设置边距
+        topLayout.setContentsMargins(20, 10, 10, 5)  # 左上右下的间距为10像素
 
-        self.left_widget = QWidget(self)
-        self.left_layout = QVBoxLayout(self.left_widget)
-
-        self.tabs_list = QListWidget(self)
-        self.tabs_list.addItem("消息")
-        self.tabs_list.addItem("任务")
-        self.tabs_list.addItem("文档")
-        self.tabs_list.addItem("笔记")
-        self.tabs_list.itemClicked.connect(self.switch_to_tab)
-
-        self.left_layout.addWidget(self.tabs_list)
-
-        self.center_widget = QWidget(self)
-        self.center_layout = QVBoxLayout(self.center_widget)
-
-        self.welcome_label = QLabel("欢迎使用！请选择一个功能或标签。", self)
-        self.center_layout.addWidget(self.welcome_label)
-
-        self.right_widget = QWidget(self)
-        self.right_layout = QVBoxLayout(self.right_widget)
-
-        self.right_content = QWidget(self)
-        self.right_layout.addWidget(self.right_content)
-
-        # 布局设置
-        main_layout = QHBoxLayout(self.central_widget)
-        main_layout.addWidget(self.left_widget)
-        main_layout.setStretchFactor(self.left_widget, 2)
-        main_layout.addWidget(self.center_widget)
-        main_layout.setStretchFactor(self.center_widget, 4)
-        main_layout.addWidget(self.right_widget)
-        main_layout.setStretchFactor(self.right_widget, 5)
+        # 创建一个新的 QSpacerItem，并手动添加到布局
+        horizontalSpacer = QSpacerItem(30, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        topLayout.addItem(horizontalSpacer)
+        self.tabsList = self.findChild(QListWidget, "tabsList")
+        self.tabsList.itemClicked.connect(self.switch_to_tab)
+        self.welcomeLabel = self.findChild(QLabel, "welcomeLabel")
 
     def switch_to_tab(self, item):
         selected_tab = item.text()
@@ -83,8 +71,6 @@ class ChatApp(QMainWindow):
             self.display_document_page()
         elif selected_tab == "笔记":
             self.display_note_page()
-
-
     def display_task_page(self,item):
         # 获取点击任务的标题
         selected_task_title = item.text()
@@ -101,17 +87,26 @@ class ChatApp(QMainWindow):
 
 
     def load_doctor_list(self):
-        self.welcome_label.setText("医生列表：请选择一个医生")
+        self.welcomeLabel.setText("消息")
         self.remove_list_widget()
         self.doctor_list = QListWidget(self)
-        self.doctor_list.addItem("Doctor John")
-        self.doctor_list.addItem("Doctor Jane")
+        self.centerLayout.addWidget(self.doctor_list)
+        data = {'user_id': self.sender_id}
+        self.sio.emit('get_doctors_except_user', data)
         self.doctor_list.itemClicked.connect(self.load_chat_history)
-        self.center_layout.addWidget(self.doctor_list)
+
+    def on_doctor_list(self,data):
+        doctors = data.get('doctors', [])  # 获取医生列表
+        for doctor in doctors:
+            doctor_id = doctor['doctor_id']
+            doctor_name = doctor['doctor_name']
+            item = QListWidgetItem(doctor_name)
+            item.setData(Qt.UserRole, (doctor_id,doctor_name))  # 绑定 doctor_id
+            self.doctor_list.addItem(item)
 
     def on_receive_message(self, data):
         if data.get('sender_id') == self.receiver_id:
-            self.chat_area.append(f"Doctor2: {data['message']}")
+            self.chat_area.append(f"{self.receiver_name}: {data['message']}")
 
     def send_message(self):
         message = self.message_input.text()
@@ -125,7 +120,7 @@ class ChatApp(QMainWindow):
             self.sio.emit('send_message', data)  # 发送消息
             self.message_input.clear()
 
-    def load_chat_history(self):
+    def load_chat_history(self,item):
         self.clear_right_layout()
 
         self.chat_area = QTextEdit(self)
@@ -138,15 +133,13 @@ class ChatApp(QMainWindow):
         self.send_button = QPushButton("Send", self)
         self.send_button.setGeometry(690, 420, 90, 40)
         self.send_button.clicked.connect(self.send_message)
-        self.right_layout.addWidget(self.chat_area)
-        self.right_layout.addWidget(self.message_input)
-        self.right_layout.addWidget(self.send_button)
+        self.rightLayout.addWidget(self.chat_area)
+        self.rightLayout.addWidget(self.message_input)
+        self.rightLayout.addWidget(self.send_button)
         # 获取聊天记录时，选择的是哪个医生
-        selected_doctor = self.doctor_list.selectedItems()[0].text()
-        if selected_doctor == "Doctor John":
-            self.receiver_id = 2
-        elif selected_doctor == "Doctor Jane":
-            self.receiver_id = 3
+
+        self.receiver_id,self.receiver_name = item.data(Qt.UserRole)
+        print(self.receiver_name)
         data = {
             'sender_id': self.sender_id,
             'receiver_id': self.receiver_id
@@ -156,23 +149,20 @@ class ChatApp(QMainWindow):
     def on_chat_history(self, data):
         chat_history = data['history']
         for message in chat_history:
-            sender = 'Me' if message['sender_id'] == self.sender_id else 'Doctor2'
+            sender = 'Me' if message['sender_id'] == self.sender_id else self.receiver_name
             self.chat_area.append(f"{sender}: {message['message_content']}")
 
     def load_task_list(self):
-        self.welcome_label.setText("任务列表：请选择一个任务")
+        self.welcomeLabel.setText("任务")
         self.remove_list_widget()
         self.clear_right_layout()
         self.task_list = QListWidget(self)
-        self.center_layout.addWidget(self.task_list)
-
+        self.centerLayout.addWidget(self.task_list)
         # Set custom delegate for the task list
         delegate = TaskItemDelegate(self.task_list,self.sio)
         self.task_list.setItemDelegate(delegate)
-
-        self.assigned_doctor_id = self.user_id
         data = {
-            'assigned_doctor_id': self.assigned_doctor_id
+            'assigned_doctor_id': self.sender_id
         }
         self.sio.emit('get_task_list', data)
 
@@ -186,19 +176,35 @@ class ChatApp(QMainWindow):
             list_item = QListWidgetItem(task_title)
             list_item.setData(Qt.UserRole, task_id)  # Store the task ID as custom data
             self.task_list.addItem(list_item)
+        # 创建 "add task" 并设置为固定项
+        add_task_item = QListWidgetItem("add task")
+        add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)  # 禁止选中
+        add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 禁止编辑
+        add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)  # 禁止拖动
+        self.task_list.addItem(add_task_item)  # 确保它在最后
+
+        # 绑定 itemClicked 事件
+        self.task_list.itemClicked.connect(self.on_task_clicked)
+    def on_task_clicked(self, item):
+        if item.text() == "add task":
+            print("添加任务")
+            #self.add_task()
+        else:
+            print("任务详情")
+            #self.load_task_details(item)
 
     def remove_list_widget(self):
         """删除 center_layout 中的 QListWidget 组件"""
-        for i in range(self.center_layout.count()):
-            item = self.center_layout.itemAt(i)
+        for i in range(self.centerLayout.count()):
+            item = self.centerLayout.itemAt(i)
             widget = item.widget()
             if widget and isinstance(widget, QListWidget):
                 widget.deleteLater()
 
     def clear_right_layout(self):
         """删除 right_layout 中的所有组件，但保留布局本身"""
-        for i in range(self.right_layout.count()):
-            item = self.right_layout.itemAt(i)
+        for i in range(self.rightLayout.count()):
+            item = self.rightLayout.itemAt(i)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
@@ -239,7 +245,7 @@ class ChatApp(QMainWindow):
 
     def display_note_page(self):
         """显示笔记页面"""
-        self.welcome_label.setText("笔记管理")
+        self.welcomeLabel.setText("笔记管理")
         self.clear_right_layout()
         
         # 创建笔记输入区域
@@ -251,78 +257,9 @@ class ChatApp(QMainWindow):
         save_button.clicked.connect(self.add_note)
         
         # 添加到布局
-        self.right_layout.addWidget(self.note_input)
-        self.right_layout.addWidget(save_button)
+        self.rightLayout.addWidget(self.note_input)
+        self.rightLayout.addWidget(save_button)
 
-    def start(self):
-        self.sio.connect('http://localhost:5000')
-    def apply_stylesheet(self):
-        dark_theme = """
-        QWidget {
-            background-color: #20232A;
-            color: #FFFFFF;
-            font-family: "Arial";
-            font-size: 16px;
-        }
-
-        QLabel {
-            color: #E0E0E0;
-        }
-
-        QPushButton {
-            background-color: #444;
-            color: #FFFFFF;
-            border: 1px solid #5C5C5C;
-            border-radius: 5px;
-            padding: 8px;
-        }
-
-        QPushButton:hover {
-            background-color: #505357;
-        }
-
-        QPushButton:pressed {
-            background-color: #606366;
-        }
-
-        QLineEdit {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #5C5C5C;
-            padding: 5px;
-            border-radius: 4px;
-        }
-
-        QTableWidget {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #444;
-            gridline-color: #5C5C5C;
-            alternate-background-color: #282C34;
-        }
-
-        QHeaderView::section {
-            background-color: #444;
-            color: #E0E0E0;
-            border: 1px solid #5C5C5C;
-            padding: 4px;
-        }
-
-        QListWidget {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #444;
-            padding: 5px;
-        }
-
-        QFrame#detailsFrame {
-            background-color: #2E3138;
-            border: 2px solid #5C5C5C;
-            border-radius: 10px;
-            padding: 15px;
-        }
-        """
-        self.setStyleSheet(dark_theme)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

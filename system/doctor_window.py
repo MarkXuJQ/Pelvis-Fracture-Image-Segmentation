@@ -5,6 +5,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 
 from image_viewer_window import MedicalImageViewer
+from system.stylesheet import apply_stylesheet
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
 from PyQt5.QtCore import Qt
@@ -87,7 +88,7 @@ class DoctorUI(QMainWindow):
         self.load_data_from_database()
 
         # 应用样式表
-        self.apply_stylesheet()
+        apply_stylesheet(self)
 
     def adjust_layout(self):
         """
@@ -130,73 +131,6 @@ class DoctorUI(QMainWindow):
         self.detailsLayout.setStretch(2, 2)  # 病人病史部分占 2 的比例
         self.reset_details()
 
-    def apply_stylesheet(self):
-        dark_theme = """
-        QWidget {
-            background-color: #20232A;
-            color: #FFFFFF;
-            font-family: "Arial";
-            font-size: 16px;
-        }
-
-        QLabel {
-            color: #E0E0E0;
-        }
-
-        QPushButton {
-            background-color: #444;
-            color: #FFFFFF;
-            border: 1px solid #5C5C5C;
-            border-radius: 5px;
-            padding: 8px;
-        }
-
-        QPushButton:hover {
-            background-color: #505357;
-        }
-
-        QPushButton:pressed {
-            background-color: #606366;
-        }
-
-        QLineEdit {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #5C5C5C;
-            padding: 5px;
-            border-radius: 4px;
-        }
-
-        QTableWidget {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #444;
-            gridline-color: #5C5C5C;
-            alternate-background-color: #282C34;
-        }
-
-        QHeaderView::section {
-            background-color: #444;
-            color: #E0E0E0;
-            border: 1px solid #5C5C5C;
-            padding: 4px;
-        }
-
-        QListWidget {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #444;
-            padding: 5px;
-        }
-
-        QFrame#detailsFrame {
-            background-color: #2E3138;
-            border: 2px solid #5C5C5C;
-            border-radius: 10px;
-            padding: 15px;
-        }
-        """
-        self.setStyleSheet(dark_theme)
 
     def load_data_from_database(self):
         """从数据库加载数据并更新表格"""

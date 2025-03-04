@@ -267,7 +267,7 @@ def init_database():
             CREATE TABLE IF NOT EXISTS doctors (
                 doctor_id VARCHAR(20) PRIMARY KEY,
                 doctor_name VARCHAR(50) NOT NULL,
-                doctor_password VARCHAR(100) NOT NULL,
+                password VARCHAR(100) NOT NULL,
                 phone VARCHAR(20),
                 specialty VARCHAR(50)
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
@@ -443,7 +443,7 @@ def insert_fracture_history(history_id, patient_id, fracture_date, fracture_loca
         connection.close()
 
 
-def insert_doctor(doctor_id, doctor_name, doctor_password, phone=None, specialty=None):
+def insert_doctor(doctor_id, doctor_name, password, phone=None, specialty=None):
     """插入医生信息"""
     try:
         connection = get_connection()  # 获取数据库连接
@@ -451,12 +451,11 @@ def insert_doctor(doctor_id, doctor_name, doctor_password, phone=None, specialty
 
         # 插入数据的 SQL
         insert_query = """
-        INSERT INTO doctors (doctor_id, doctor_name, doctor_password, phone, specialty)
+        INSERT INTO doctors (doctor_id, doctor_name, password, phone, specialty)
         VALUES (%s, %s, %s, %s, %s)
         """
-        print(22)
         # 执行插入操作
-        cursor.execute(insert_query, (doctor_id, doctor_name, doctor_password, phone, specialty))
+        cursor.execute(insert_query, (doctor_id, doctor_name, password, phone, specialty))
         connection.commit()  # 提交事务
 
         logger.info(f"Successfully inserted doctor {doctor_name} with ID {doctor_id}.")
