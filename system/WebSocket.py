@@ -80,7 +80,6 @@ def get_doctors_except_user(data):
 def get_chat_history(data):
     sender_id = data['sender_id']
     receiver_id = data['receiver_id']
-    print(345)
     # 从数据库中获取聊天记录
     connection = get_connection()
     cursor = connection.cursor()
@@ -98,7 +97,6 @@ def get_chat_history(data):
         chat_history_data = [{'sender_id': row[0], 'receiver_id': row[1], 'message_content': row[2],
                               'timestamp': row[3].strftime("%Y-%m-%d %H:%M:%S")} for row in chat_history]
         logging.info(f"Sending chat history: {chat_history_data}")
-        print(567)
         emit('chat_history', {'history': chat_history_data}, broadcast=False)
     except Exception as e:
         logging.error(f"Error fetching chat history: {e}")
@@ -108,7 +106,27 @@ def get_chat_history(data):
     print('Requesting chat history:', data)
     # 执行获取聊天记录的操作并返回
     emit('chat_history', {'history': []})
-    print(999)
+
+@socketio.on('get_all_patients')
+def get_all_patients():
+    """查询数据库，返回所有病人的 patient_id 和 patient_name"""
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        query = """
+            SELECT patient_id, patient_name FROM patients
+        """
+        cursor.execute(query)
+        patients = [{'patient_id': row[0], 'patient_name': row[1]} for row in cursor.fetchall()]
+
+        # 发送病人列表给客户端
+        emit('patients_list', {'patients': patients}, broadcast=False)
+
+    except pymysql.MySQLError as e:
+        logging.error(f"获取病人列表失败: {e}")
+    finally:
+        cursor.close()
+        connection.close()
 
 @socketio.on('get_task_list')
 def get_task_list(data):
@@ -122,9 +140,6 @@ def get_task_list(data):
                     FROM tasks
                     WHERE assigned_doctor_id = %s
                 """, (assigned_doctor_id))
-        print("cnm")
-        # 获取任务的任务标题
-        #cursor.execute("SELECT task_id, task_title FROM tasks WHERE assigned_doctor_id = %s")  # 获取任务ID和任务标题
         tasks = cursor.fetchall()  # 获取所有任务数据
 
         # 返回任务列表给客户端
@@ -137,8 +152,6 @@ def get_task_list(data):
     finally:
         cursor.close()
         connection.close()
-
-
 
 @socketio.on('get_task_details')
 def get_task_details(data):
@@ -238,6 +251,46 @@ def update_task_title(data):
     except pymysql.MySQLError as e:
         logging.error(f"Error updating task title: {e}")
         emit('task_title_updated', {'task_id': None, 'error': str(e)}, broadcast=False)
+    finally:
+        cursor.close()
+        connection.close()
+
+@socketio.on('create_task')
+def create_task(data):
+    """批量创建任务，并分配给多个医生"""
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        print("母鸡")
+        # 提取数据
+        task_title = data['task_title']
+        task_description = data['task_description']
+        due_date = data['due_date']
+        status = data['status']
+        assigned_doctor_ids = data['assigned_doctor_ids']  # 这里是一个列表
+        patient_id = data['patient_id']
+
+        # 记录插入的任务 ID
+        created_task_ids = []
+
+        # 循环遍历所有医生，插入多条任务
+        for doctor_id in assigned_doctor_ids:
+            query = """
+                INSERT INTO tasks (task_title, task_description, due_date, status, assigned_doctor_id, patient_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(query, (task_title, task_description, due_date, status, doctor_id, patient_id))
+            created_task_ids.append(cursor.lastrowid)  # 记录任务 ID
+
+        connection.commit()  # 提交事务
+
+        # 发送成功创建的任务列表给客户端
+        emit('task_created', {'task_ids': created_task_ids, 'message': '任务创建成功'}, broadcast=False)
+
+    except pymysql.MySQLError as e:
+        connection.rollback()  # 发生错误时回滚
+        logging.error(f"创建任务失败: {e}")
+        emit('task_creation_failed', {'error': str(e)}, broadcast=False)
     finally:
         cursor.close()
         connection.close()
