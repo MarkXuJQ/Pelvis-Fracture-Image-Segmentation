@@ -1,12 +1,12 @@
 import sys
 import json
-
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
+import datetime
+from PyQt5.QtGui import QStandardItemModel, QStandardItem, QFont
 from PyQt5.QtWidgets import (
     QApplication, QListView, QWidget, QVBoxLayout, QLabel, QPushButton, QMenu, QStyleOptionViewItem,
-    QStyledItemDelegate, QSpacerItem, QSizePolicy, QDateTimeEdit, QComboBox
+    QStyledItemDelegate, QSpacerItem, QSizePolicy, QDateTimeEdit, QComboBox, QFrame
 )
-from PyQt5.QtCore import Qt, QSize, QDateTime, QTimer
+from PyQt5.QtCore import Qt, QSize, QDateTime, QTimer, QDate, QTime
 import os
 import socketio
 from PyQt5 import uic
@@ -18,6 +18,8 @@ from qasync import QEventLoop
 import asyncio
 from delegate import  TaskItemDelegate
 from stylesheet import apply_stylesheet
+from system.document import DocumentManagerWidget
+from taskdetails import TaskDetailsWidget
 
 class ChatApp(QMainWindow):
     def __init__(self,user_id):
@@ -40,10 +42,7 @@ class ChatApp(QMainWindow):
         self.sio.on('chat_history', self.on_chat_history)
         self.sio.on('task_list',self.on_task_list)
         self.sio.on('doctors_list',self.on_doctor_list)
-        # 监听任务创建成功事件
-        #self.sio.on('task_created', self.repeat_task_list)
-    def repeat_task_list(self,data):
-        self.load_task_list()
+
     def adjustlayout(self):
         # 假设这是主窗口的布局
         layout = self.findChild(QHBoxLayout, "mainChatLayout")
@@ -74,20 +73,6 @@ class ChatApp(QMainWindow):
             self.display_document_page()
         elif selected_tab == "笔记":
             self.display_note_page()
-    def display_task_page(self,item):
-        # 获取点击任务的标题
-        selected_task_title = item.text()
-
-        # 通过任务标题获取任务 ID（或者可以直接通过标题传递任务 ID）
-        task_id = selected_task_title.split(":")[0]  # 假设任务列表项的格式是 'task_id: task_title'
-
-        # 发送请求以获取任务详细信息
-        data = {
-            'task_id': task_id
-        }
-        print(f"Requesting task details for task_id: {task_id}")
-        self.sio.emit('get_task_details', data)  # 向服务器请求任务详情
-
 
     def load_doctor_list(self):
         self.welcomeLabel.setText("消息")
@@ -163,7 +148,7 @@ class ChatApp(QMainWindow):
     def on_chat_history(self, data):
         chat_history = data['history']
         for message in chat_history:
-            sender = 'Me' if message['sender_id'] == self.sender_id else self.receiver_name
+            sender = 'Me' if message['sender_id'] == int(self.sender_id) else self.receiver_name
             self.chat_area.append(f"{sender}: {message['message_content']}")
 
     def load_task_list(self,*args):
@@ -200,14 +185,12 @@ class ChatApp(QMainWindow):
         # 绑定 itemClicked 事件
         self.task_list.itemClicked.connect(self.on_task_clicked)
     def on_task_clicked(self, item):
+        self.clear_right_layout()
         if item.text() == "add task":
-            print("添加任务")
-            self.clear_right_layout()
             # 创建任务创建组件，并添加到 rightLayout
-            self.task_creation_widget = TaskCreationWidget(self,self.sender_id, self.rightLayout)
+            self.task_creation = TaskCreationWidget(self,self.sender_id, self.rightLayout)
         else:
-            print("任务详情")
-            #self.load_task_details(item)
+            self.task_details = TaskDetailsWidget(self,item,self.rightLayout)
 
     def remove_list_widget(self):
         """删除 center_layout 中的 QListWidget 组件"""
@@ -226,13 +209,17 @@ class ChatApp(QMainWindow):
                 widget.deleteLater()
 
     def display_document_page(self):
-        file_dialog = QFileDialog(self)
+        self.remove_list_widget()
+        self.clear_right_layout()
+        #self.document = DocumentManagerWidget(self)
+
+        '''file_dialog = QFileDialog(self)
         file_dialog.setFileMode(QFileDialog.ExistingFiles)
         if file_dialog.exec_():
             file_paths = file_dialog.selectedFiles()
             # 选择文件上传逻辑
             document_data = {'file_paths': file_paths, 'patient_id': self.receiver_id}
-            self.sio.emit('upload_document', document_data)
+            self.sio.emit('upload_document', document_data)'''
 
     def add_note(self):
         note_content = self.note_input.text()
@@ -265,8 +252,6 @@ class TaskCreationWidget:
         self.rightLayout = rightLayout  # 传递已有的布局
         self.init_ui()
         self.sio.on('patients_list', self.on_patients_list)
-        # 监听任务创建成功事件
-
 
     def init_ui(self):
         # 任务标题
@@ -389,6 +374,8 @@ class TaskCreationWidget:
         self.patient_select.setCurrentIndex(0)
         # 任务创建后，延迟 1 秒再更新任务列表，确保数据库写入完成
         QTimer.singleShot(1000, self.chat_app.load_task_list)
+
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
