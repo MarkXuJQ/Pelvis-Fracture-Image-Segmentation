@@ -40,6 +40,14 @@ def handle_message(data):
             INSERT INTO chat_records (sender_id, receiver_id, message_content)
             VALUES (%s, %s, %s)
         """, (sender_id, receiver_id, message_content))
+
+        # 2. **存入未读消息，但不影响聊天记录**
+
+        cursor.execute("""
+            INSERT INTO messages (sender_id, receiver_id, message_type, message_content, is_read)
+            VALUES (%s, %s, 'system', %s, %s)
+        """, (sender_id, receiver_id,  message_content, 'false'))  # `False` 代表未读
+
         connection.commit()
         logging.info(f"Message from {sender_id} to {receiver_id}: {message_content}")
     except Exception as e:
@@ -153,50 +161,6 @@ def get_task_list(data):
         cursor.close()
         connection.close()
 
-@socketio.on('get_task_details')
-def get_task_details(data):
-    task_id = data['task_id']
-    print(345)  # 打印调试信息
-
-    # 从数据库中获取任务信息
-    connection = get_connection()
-    cursor = connection.cursor()
-    try:
-        cursor.execute("""
-            SELECT task_title, task_description, assigned_doctor_id, patient_id, due_date, status 
-            FROM tasks
-            WHERE task_id = %s
-        """, (task_id,))
-
-        task_details = cursor.fetchone()
-
-        if task_details:
-            # 将任务详情返回给客户端
-            task_details_data = {
-                'task_title': task_details[0],
-                'task_description': task_details[1],
-                'assigned_doctor_id': task_details[2],
-                'patient_id': task_details[3],
-                'due_date': task_details[4].strftime("%Y-%m-%d %H:%M:%S"),
-                'status': task_details[5]
-            }
-            logging.info(f"Sending task details: {task_details_data}")
-            print(567)  # 打印调试信息
-            emit('task_details', {'task': task_details_data}, broadcast=False)
-        else:
-            # 如果没有找到任务详情，返回空字典
-            emit('task_details', {'task': {}})
-
-    except Exception as e:
-        logging.error(f"Error fetching task details: {e}")
-    finally:
-        cursor.close()
-        connection.close()
-
-    print('Requesting task details:', data)  # 打印请求的任务数据
-    print(999)  # 打印调试信息
-
-
 @socketio.on('delete_task')
 def delete_task(data):
     task_id = data['task_id']
@@ -254,6 +218,45 @@ def update_task_title(data):
     finally:
         cursor.close()
         connection.close()
+@socketio.on('update_task_details')
+def update_task_details(data):
+    """更新任务详情"""
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        # 获取任务信息
+        task_id = data.get('task_id')
+        task_description = data.get('task_description')
+        due_date = data.get('due_date')
+        status = data.get('status')
+        assigned_doctor_id = data.get('assigned_doctor_id')
+
+        if not task_id:
+            emit('task_update_failed', {'error': '任务 ID 不能为空'}, broadcast=False)
+            return
+
+        # 更新任务数据
+        query = """
+            UPDATE tasks 
+            SET task_description = %s, due_date = %s, status = %s, assigned_doctor_id = %s
+            WHERE task_id = %s
+        """
+        cursor.execute(query, (task_description, due_date, status, assigned_doctor_id, task_id))
+        connection.commit()
+
+        print(f"任务更新成功: {data}")
+
+        # 发送任务更新通知给相关医生
+        emit('task_updated', {'assigned_doctor_id': assigned_doctor_id, 'task_id': task_id}, broadcast=True)
+
+    except pymysql.MySQLError as e:
+        connection.rollback()
+        logging.error(f"更新任务失败: {e}")
+        emit('task_update_failed', {'error': str(e)}, broadcast=False)
+    finally:
+        cursor.close()
+        connection.close()
 
 @socketio.on('create_task')
 def create_task(data):
@@ -261,7 +264,6 @@ def create_task(data):
     try:
         connection = get_connection()
         cursor = connection.cursor()
-        print("母鸡")
         # 提取数据
         task_title = data['task_title']
         task_description = data['task_description']
@@ -291,6 +293,86 @@ def create_task(data):
         connection.rollback()  # 发生错误时回滚
         logging.error(f"创建任务失败: {e}")
         emit('task_creation_failed', {'error': str(e)}, broadcast=False)
+    finally:
+        cursor.close()
+        connection.close()
+
+
+@socketio.on('get_task_details')
+def get_task_details(data):
+    """获取指定医生的任务，并查询相同任务标题的所有医生及任务状态"""
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        assigned_doctor_id = data['assigned_doctor_id']
+        task_title = data['task_title']
+        # 获取该医生的任务
+        cursor.execute("""
+            SELECT task_id, task_title, task_description, due_date, status, assigned_doctor_id, patient_id
+            FROM tasks 
+            WHERE assigned_doctor_id = %s
+        """, (assigned_doctor_id,))
+        doctor_tasks = cursor.fetchall()
+        if not doctor_tasks:
+            print(f"医生 {assigned_doctor_id} 没有分配的任务")
+            emit('task_details', {'tasks': []}, broadcast=False)
+            return
+        # 在该医生的任务中，查找 task_title 匹配的任务
+        matching_tasks = [task for task in doctor_tasks if task[1] == task_title]
+
+        if not matching_tasks:
+            print(f"医生 {assigned_doctor_id} 没有 task_title 为 {task_title} 的任务")
+            emit('task_details', {'tasks': []}, broadcast=False)
+            return
+
+        # 取出该任务的描述、截止日期、病人 ID（以第一个匹配的任务为准）
+        task_description = matching_tasks[0][2]
+        due_date = matching_tasks[0][3].strftime("%Y-%m-%d %H:%M:%S") if matching_tasks[0][3] else "无截止日期"
+        patient_id = matching_tasks[0][6]
+
+        #查询所有任务中相同 task_title 的任务
+        cursor.execute("""
+            SELECT assigned_doctor_id, status 
+            FROM tasks 
+            WHERE task_title = %s
+        """, (task_title,))
+        all_tasks = cursor.fetchall()  # 获取所有任务的 doctor_id 和状态
+        doctor_status_list = []
+        doctor_ids = [task[0] for task in all_tasks]  # 取出所有医生 ID
+        if not doctor_ids:
+            print(f"没有找到 task_title 为 {task_title} 的任务")
+            emit('task_details', {'tasks': []}, broadcast=False)
+            return
+
+        # 通过 assigned_doctor_id 查询医生名字
+        cursor.execute(f"""
+            SELECT doctor_id, doctor_name 
+            FROM doctors 
+            WHERE doctor_id IN ({','.join(['%s'] * len(doctor_ids))})
+        """, tuple(doctor_ids))
+        doctor_name_map = {row[0]: row[1] for row in cursor.fetchall()}  # 转换为字典 {doctor_id: doctor_name}
+
+        # 组合数据
+        for task in all_tasks:
+            doctor_id, status = task
+            doctor_name = doctor_name_map.get(doctor_id, "未知医生")
+            doctor_status_list.append({
+                'assigned_doctor_id': doctor_id,
+                'doctor_name': doctor_name,
+                'status': status
+            })
+        # 发送任务详情
+        emit('task_details', {
+            'task_title': task_title,
+            'task_description': task_description,
+            'due_date': due_date,
+            'patient_id': patient_id,
+            'tasks': doctor_status_list
+        }, broadcast=False)
+    except pymysql.MySQLError as e:
+        logging.error(f"获取任务列表失败: {e}")
+        emit('task_details_failed', {'error': str(e)}, broadcast=False)
     finally:
         cursor.close()
         connection.close()

@@ -154,8 +154,8 @@ def get_connection():
         '''cursor = connection.cursor()
         try:
             # 删除表格的 SQL 语句
-            cursor.execute("DROP TABLE IF EXISTS fracturehistories")
-            cursor.execute("DROP TABLE IF EXISTS patients")
+            cursor.execute("DROP TABLE IF EXISTS documents")
+            #cursor.execute("DROP TABLE IF EXISTS patients")
             connection.commit()  # 提交事务
             print("Table deleted successfully!")
         except pymysql.MySQLError as e:
@@ -163,6 +163,7 @@ def get_connection():
         finally:
             cursor.close()
             connection.close()'''
+
         logger.info("Successfully connected to MySQL database")
         return connection
     except Error as e:
@@ -304,6 +305,19 @@ def init_database():
                     ON UPDATE RESTRICT
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                message_id int AUTO_INCREMENT PRIMARY KEY,  -- 消息唯一ID
+                sender_id VARCHAR(20) NOT NULL,  -- 发送者ID
+                receiver_id VARCHAR(20) NOT NULL,  -- 接收者ID
+                message_type ENUM('system', 'notification') NOT NULL,  -- 消息类型
+                message_content TEXT NOT NULL,  -- 消息内容
+                is_read ENUM('false', 'true') DEFAULT 'false',  -- 是否已读
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP  -- 消息创建时间
+                ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+               """)
+
         #聊天记录
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS chat_records (
@@ -347,6 +361,7 @@ def init_database():
                    CREATE TABLE IF NOT EXISTS documents (
                        doc_id INT AUTO_INCREMENT PRIMARY KEY,
                        patient_id VARCHAR(6) NOT NULL,
+                       doc_name VARCHAR(20) NOT NULL,
                        doctor_id VARCHAR(20) NOT NULL,
                        file_path VARCHAR(255),
                        description TEXT,
