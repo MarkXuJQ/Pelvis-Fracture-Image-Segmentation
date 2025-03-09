@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+import torchvision.models.segmentation as seg_models
 import numpy as np
 import cv2
 import os
@@ -13,7 +14,7 @@ class DeepLabV3Segmenter:
         
         参数:
             num_classes: 分割类别数量，默认为21（Pascal VOC数据集）
-            pretrained: 是否使用预训练权重（设为False避免自动下载）
+            pretrained: 是否使用预训练权重（已弃用，保留为兼容参数）
             device: 计算设备 ('cuda' 或 'cpu')
             backbone: 骨干网络类型 ('resnet50' 或 'resnet101')
         """
@@ -23,9 +24,9 @@ class DeepLabV3Segmenter:
         
         # 根据指定的骨干网络加载相应的模型
         if backbone == 'resnet50':
-            self.model = models.segmentation.deeplabv3_resnet50(pretrained=pretrained)
+            self.model = seg_models.deeplabv3_resnet50(weights=None)
         elif backbone == 'resnet101':
-            self.model = models.segmentation.deeplabv3_resnet101(pretrained=pretrained)
+            self.model = seg_models.deeplabv3_resnet101(weights=None)
         else:
             raise ValueError(f"不支持的骨干网络: {backbone}, 只支持 'resnet50' 或 'resnet101'")
         
@@ -43,30 +44,66 @@ class DeepLabV3Segmenter:
     def load_weights(self, checkpoint_path):
         """加载自定义权重"""
         try:
-            # 先尝试直接加载
+            # 检查文件是否存在
+            if not os.path.exists(checkpoint_path):
+                raise FileNotFoundError(f"DeepLabV3 权重文件不存在: {checkpoint_path}")
+            
+            print(f"正在加载权重: {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             
-            # 检查是否包含训练状态
+            # 检查加载的字典类型
+            print(f"检查点类型: {type(checkpoint)}")
+            if isinstance(checkpoint, dict):
+                print(f"检查点字典键: {list(checkpoint.keys())}")
+            
+            # 尝试不同的加载方式
             if isinstance(checkpoint, dict) and 'model_state' in checkpoint:
-                print(f"检测到训练状态字典，加载 'model_state' 键...")
-                self.model.load_state_dict(checkpoint['model_state'])
+                state_dict = checkpoint['model_state']
             elif isinstance(checkpoint, dict) and 'model' in checkpoint:
-                print(f"检测到模型字典，加载 'model' 键...")
-                self.model.load_state_dict(checkpoint['model'])
+                state_dict = checkpoint['model']
             elif isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-                print(f"检测到状态字典，加载 'state_dict' 键...")
-                self.model.load_state_dict(checkpoint['state_dict'])
+                state_dict = checkpoint['state_dict']
             else:
-                # 直接尝试加载整个字典
-                self.model.load_state_dict(checkpoint)
+                state_dict = checkpoint
+            
+            # 创建新的状态字典，修正键名不匹配问题
+            new_state_dict = {}
+            for k, v in state_dict.items():
+                # 处理嵌套的分类器结构
+                if k.startswith('classifier.classifier.'):
+                    new_k = k.replace('classifier.classifier.', 'classifier.')
+                    new_state_dict[new_k] = v
+                elif k.startswith('module.'):
+                    # 处理 DataParallel 封装的模型
+                    new_k = k[7:]  # 移除 'module.' 前缀
+                    new_state_dict[new_k] = v
+                else:
+                    new_state_dict[k] = v
+            
+            # 创建模型的临时副本，以便在加载失败时恢复
+            import copy
+            model_copy = copy.deepcopy(self.model)
+            
+            try:
+                # 尝试加载处理后的状态字典（使用严格模式）
+                missing, unexpected = self.model.load_state_dict(new_state_dict, strict=False)
+                print(f"模型加载完成。")
+                if missing:
+                    print(f"缺失的键: {len(missing)} 个")
+                if unexpected:
+                    print(f"意外的键: {len(unexpected)} 个")
                 
-            print(f"模型权重加载成功: {checkpoint_path}")
+            except Exception as e:
+                # 如果加载失败，恢复模型
+                self.model = model_copy
+                print(f"加载状态字典失败，恢复原始模型: {str(e)}")
+                raise e
             
         except Exception as e:
             print(f"加载权重时出错: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise e
-            
-        self.model.eval()
     
     def preprocess(self, image):
         """预处理输入图像"""

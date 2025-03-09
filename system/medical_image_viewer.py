@@ -19,6 +19,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 导入我们的医学图像处理类
 from system.medical_image_utils import MedicalImageProcessor, list_available_models
 
+# 在文件开头添加
+os.environ['TORCH_HOME'] = './weights'  # 设置自定义缓存目录
+os.environ['PYTORCH_NO_DOWNLOAD'] = '1'  # 尝试禁用自动下载
+
 # 查看所有可用字体
 font_list = [f.name for f in fm.fontManager.ttflist]
 print(font_list)

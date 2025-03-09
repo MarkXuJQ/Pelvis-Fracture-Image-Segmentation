@@ -210,41 +210,44 @@ class MedicalImageProcessor:
             print(f"设置分割模型时出错: {str(e)}")
             raise e
     
-    def segment_image(self, **kwargs) -> Optional[np.ndarray]:
+    def segment_image(self, **kwargs):
         """
-        对当前加载的图像进行分割
+        分割图像
         
         参数:
-            **kwargs: 传递给分割器的参数
+            **kwargs: 分割特定参数（例如points, point_labels, target_class等）
             
         返回:
-            Optional[np.ndarray]: 分割掩码
+            mask: 分割结果
         """
-        if self.image_data is None:
-            print("错误: 没有加载图像")
-            return None
-        
         if self.segmenter is None:
-            print("错误: 没有设置分割模型")
-            return None
+            raise ValueError("请先使用set_segmentation_model设置分割模型")
         
-        try:
-            if self.is_3d:
-                # 对3D图像进行分割，目前仅支持逐层处理
-                print("对3D图像进行分割，每个切片单独处理")
-                masks = []
-                for i in range(self.image_data.shape[0]):
-                    slice_image = self.image_data[i]
-                    mask = self.segmenter.segment(slice_image, **kwargs)
+        if self.is_3d:
+            print("对3D图像进行分割，每个切片单独处理")
+            masks = []
+            for i in range(self.image_data.shape[0]):
+                # 确保图像为浮点型并且范围在0-1之间
+                slice_img = self.image_data[i].astype(np.float32)
+                if slice_img.max() > 1.0:
+                    slice_img = slice_img / 255.0
+                    
+                try:
+                    mask = self.segmenter.segment(slice_img, **kwargs)
                     masks.append(mask)
-                return np.stack(masks)
-            else:
-                # 对2D图像进行分割
-                return self.segmenter.segment(self.image_data, **kwargs)
-        
-        except Exception as e:
-            print(f"图像分割时出错: {str(e)}")
-            return None
+                except Exception as e:
+                    print(f"分割切片 {i} 时出错: {e}")
+                    # 填充空白掩码
+                    masks.append(np.zeros_like(self.image_data[i], dtype=bool))
+                
+            return np.stack(masks)
+        else:
+            # 确保图像为浮点型并且范围在0-1之间
+            img = self.image_data.astype(np.float32)
+            if img.max() > 1.0:
+                img = img / 255.0
+            
+            return self.segmenter.segment(img, **kwargs)
     
     def display_segmentation_result(self, mask: np.ndarray, slice_index: int = None) -> None:
         """
@@ -363,7 +366,7 @@ def list_available_models() -> dict:
     列出系统中可用的分割模型
     
     返回:
-        dict: 可用模型的字典，格式为 {'model_name': 'path/to/weights.pth'}
+        dict: 可用模型的字典，包含模型信息
     """
     models = {
         'medsam': {
@@ -379,14 +382,14 @@ def list_available_models() -> dict:
         },
         'deeplabv3_resnet101': {
             'description': 'DeepLabV3 ResNet101 模型 (语义分割)',
-            'weights_path': 'weights/DeeplabV3/deeplabv3_resnet101.pth',
+            'weights_path': 'weights/DeeplabV3/best_deeplabv3_resnet101_voc_os16.pth',
             'class': DeepLabV3Segmenter,
             'backbone': 'resnet101'
         }
     }
     
-    # 检查每个模型的权重文件是否存在
-    for model_name, info in models.items():
+    # 检查权重文件是否存在
+    for name, info in models.items():
         if os.path.exists(info['weights_path']):
             info['status'] = '已安装'
         else:
