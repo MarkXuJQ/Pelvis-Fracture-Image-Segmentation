@@ -154,8 +154,8 @@ def get_connection():
         '''cursor = connection.cursor()
         try:
             # 删除表格的 SQL 语句
-            cursor.execute("DROP TABLE IF EXISTS fracturehistories")
-            cursor.execute("DROP TABLE IF EXISTS patients")
+            cursor.execute("DROP TABLE IF EXISTS documents")
+            #cursor.execute("DROP TABLE IF EXISTS patients")
             connection.commit()  # 提交事务
             print("Table deleted successfully!")
         except pymysql.MySQLError as e:
@@ -163,6 +163,7 @@ def get_connection():
         finally:
             cursor.close()
             connection.close()'''
+
         logger.info("Successfully connected to MySQL database")
         return connection
     except Error as e:
@@ -267,7 +268,7 @@ def init_database():
             CREATE TABLE IF NOT EXISTS doctors (
                 doctor_id VARCHAR(20) PRIMARY KEY,
                 doctor_name VARCHAR(50) NOT NULL,
-                doctor_password VARCHAR(100) NOT NULL,
+                password VARCHAR(100) NOT NULL,
                 phone VARCHAR(20),
                 specialty VARCHAR(50)
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
@@ -304,6 +305,19 @@ def init_database():
                     ON UPDATE RESTRICT
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                message_id int AUTO_INCREMENT PRIMARY KEY,  -- 消息唯一ID
+                sender_id VARCHAR(20) NOT NULL,  -- 发送者ID
+                receiver_id VARCHAR(20) NOT NULL,  -- 接收者ID
+                message_type ENUM('system', 'notification') NOT NULL,  -- 消息类型
+                message_content TEXT NOT NULL,  -- 消息内容
+                is_read ENUM('false', 'true') DEFAULT 'false',  -- 是否已读
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP  -- 消息创建时间
+                ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+               """)
+
         #聊天记录
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS chat_records (
@@ -347,6 +361,7 @@ def init_database():
                    CREATE TABLE IF NOT EXISTS documents (
                        doc_id INT AUTO_INCREMENT PRIMARY KEY,
                        patient_id VARCHAR(6) NOT NULL,
+                       doc_name VARCHAR(20) NOT NULL,
                        doctor_id VARCHAR(20) NOT NULL,
                        file_path VARCHAR(255),
                        description TEXT,
@@ -443,7 +458,7 @@ def insert_fracture_history(history_id, patient_id, fracture_date, fracture_loca
         connection.close()
 
 
-def insert_doctor(doctor_id, doctor_name, doctor_password, phone=None, specialty=None):
+def insert_doctor(doctor_id, doctor_name, password, phone=None, specialty=None):
     """插入医生信息"""
     try:
         connection = get_connection()  # 获取数据库连接
@@ -451,12 +466,11 @@ def insert_doctor(doctor_id, doctor_name, doctor_password, phone=None, specialty
 
         # 插入数据的 SQL
         insert_query = """
-        INSERT INTO doctors (doctor_id, doctor_name, doctor_password, phone, specialty)
+        INSERT INTO doctors (doctor_id, doctor_name, password, phone, specialty)
         VALUES (%s, %s, %s, %s, %s)
         """
-        print(22)
         # 执行插入操作
-        cursor.execute(insert_query, (doctor_id, doctor_name, doctor_password, phone, specialty))
+        cursor.execute(insert_query, (doctor_id, doctor_name, password, phone, specialty))
         connection.commit()  # 提交事务
 
         logger.info(f"Successfully inserted doctor {doctor_name} with ID {doctor_id}.")

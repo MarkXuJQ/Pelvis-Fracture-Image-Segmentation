@@ -11,6 +11,11 @@ class TaskItemDelegate(QStyledItemDelegate):
         self.current_edit = None
 
     def paint(self, painter, option, index):
+        task_text = index.data(Qt.ItemDataRole.DisplayRole)  # 获取任务文本
+        if task_text == "add task":
+            # 仅绘制文本，不添加按钮
+            super().paint(painter, option, index)
+            return
         # Paint the task title as normal
         super().paint(painter, option, index)
         # Draw the "More" button (three dots)
@@ -21,7 +26,7 @@ class TaskItemDelegate(QStyledItemDelegate):
                 return  # 如果按钮已经存在，则不重复创建
         button = QPushButton("...", self.parent())
         button.setGeometry(rect)  # 设置按钮的位置和大小
-        button.setStyleSheet("border: none; font-size: 16px; background: none; padding: 0px;color: black")
+        button.setStyleSheet("border: none; font-size: 16px; background: none; padding: 0px;color: white")
         button.setFlat(True)  # 让按钮看起来像是一个标签
         button.setProperty("row", row)  # 存储 index对应的行
         # 将按钮保存到列表中，避免每次都创建新按钮

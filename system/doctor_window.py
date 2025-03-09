@@ -2,8 +2,10 @@ import datetime
 import SimpleITK as sitk
 import pandas as pd
 from PyQt5 import QtCore, QtGui, QtWidgets
+import os
 
 from image_viewer_window import MedicalImageViewer
+from system.stylesheet import apply_stylesheet
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
 from PyQt5.QtCore import Qt
@@ -25,29 +27,30 @@ session = Session()
 
 
 class DoctorUI(QMainWindow):
-    def __init__(self,user_id):
+    def __init__(self, doctor_id):
         super().__init__()
 
+        self.doctor_id = doctor_id
         # 加载 .ui 文件
-        uic.loadUi("ui/doctor_window.ui", self)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        ui_file = os.path.join(current_dir, "ui", "doctor_window.ui")
+        uic.loadUi(ui_file, self)
 
-        self.user_id = user_id
         # 初始化属性
         self.patient_data = []
-        main
         self.current_page = 1
         self.items_per_page = 10
         self.viewer = None  # Will hold the current image viewer
         self.render_on_open = False
 
-        self.message_list_data = [
+        '''self.message_list_data = [
             "注意事项：请检查病人病史。",
             "更新提醒：病人列表已更新。",
             "系统提示：分配操作成功。",
         ]
 
         # 初始化病人列表和消息提示
-        self.messageList.addItems(self.message_list_data)
+        self.messageList.addItems(self.message_list_data)'''
 
         # 设置分页按钮信号
         self.firstPageButton.clicked.connect(self.first_page)
@@ -83,9 +86,9 @@ class DoctorUI(QMainWindow):
 
         # 初始化表格
         self.load_data_from_database()
-
+        self.load_unread_messages()
         # 应用样式表
-        self.apply_stylesheet()
+        apply_stylesheet(self)
 
     def adjust_layout(self):
         """
@@ -128,73 +131,31 @@ class DoctorUI(QMainWindow):
         self.detailsLayout.setStretch(2, 2)  # 病人病史部分占 2 的比例
         self.reset_details()
 
-    def apply_stylesheet(self):
-        dark_theme = """
-        QWidget {
-            background-color: #20232A;
-            color: #FFFFFF;
-            font-family: "Arial";
-            font-size: 16px;
-        }
+    def load_unread_messages(self):
+        """从数据库查询未读消息，并更新消息列表"""
+        try:
+            query = text("""
+                SELECT m.message_id, m.sender_id, m.message_content, m.created_at
+                FROM messages m
+                WHERE m.receiver_id = :receiver_id AND m.is_read = 'false'
+            """)
+            # 执行查询
+            result = session.execute(query, {'receiver_id': self.doctor_id}).fetchall()
+            # 确保 result 不为 None
+            if result is None:
+                result = []
 
-        QLabel {
-            color: #E0E0E0;
-        }
+            # 清空列表并添加新消息
+            self.messageList.clear()
+            for row in result:
+                message_id, sender_id, message_content, created_at = row
+                display_text = f"[{created_at}] From {sender_id}: {message_content}"  # 格式化消息显示
+                item = QListWidgetItem(display_text)
+                item.setData(Qt.UserRole, message_id)  # 绑定 message_id 方便后续标记已读
+                self.messageList.addItem(item)
 
-        QPushButton {
-            background-color: #444;
-            color: #FFFFFF;
-            border: 1px solid #5C5C5C;
-            border-radius: 5px;
-            padding: 8px;
-        }
-
-        QPushButton:hover {
-            background-color: #505357;
-        }
-
-        QPushButton:pressed {
-            background-color: #606366;
-        }
-
-        QLineEdit {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #5C5C5C;
-            padding: 5px;
-            border-radius: 4px;
-        }
-
-        QTableWidget {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #444;
-            gridline-color: #5C5C5C;
-            alternate-background-color: #282C34;
-        }
-
-        QHeaderView::section {
-            background-color: #444;
-            color: #E0E0E0;
-            border: 1px solid #5C5C5C;
-            padding: 4px;
-        }
-
-        QListWidget {
-            background-color: #2E3138;
-            color: #FFFFFF;
-            border: 1px solid #444;
-            padding: 5px;
-        }
-
-        QFrame#detailsFrame {
-            background-color: #2E3138;
-            border: 2px solid #5C5C5C;
-            border-radius: 10px;
-            padding: 15px;
-        }
-        """
-        self.setStyleSheet(dark_theme)
+        except Exception as e:
+            print(f"Error loading unread messages: {e}")
 
     def load_data_from_database(self):
         """从数据库加载数据并更新表格"""
@@ -307,7 +268,7 @@ class DoctorUI(QMainWindow):
 
     def open_collaboration_window(self):
         # 打开聊天合作窗口
-        self.collab_window = ChatApp(self.user_id)
+        self.collab_window = ChatApp(self.doctor_id)
         self.collab_window.show()
 
     # 定义点击事件处理函数
@@ -495,6 +456,6 @@ if __name__ == "__main__":
     import sys
 
     app = QApplication(sys.argv)
-    window = DoctorUI(1)
+    window = DoctorUI(2)
     window.show()
     sys.exit(app.exec_())
