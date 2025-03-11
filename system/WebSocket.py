@@ -189,7 +189,7 @@ def delete_task(data):
         cursor.close()
         connection.close()
 
-@socketio.on('update_task_title')
+'''@socketio.on('update_task_title')
 def update_task_title(data):
     task_id = data['task_id']
     new_task_title = data['new_task_title']
@@ -218,6 +218,74 @@ def update_task_title(data):
     finally:
         cursor.close()
         connection.close()
+'''
+
+@socketio.on('update_task_title')
+def update_task_title(data):
+    task_id = data['task_id']
+    new_task_title = data['new_task_title'].strip()
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        # 检查 new_task_title 是否已存在
+        cursor.execute("""
+                   SELECT COUNT(*) FROM tasks WHERE task_title = %s
+               """, (new_task_title,))
+        existing_count = cursor.fetchone()[0]
+
+        if existing_count > 0:
+            print(f"❌ 任务标题 '{new_task_title}' 已存在，更新失败")
+            emit('task_title_updated', {
+                'task_id': None,
+                'error': '任务已存在，你可以在 \'add task\' 里输入该标题并选择是否加入该任务'
+            }, broadcast=False)
+            return
+
+            # 先找到 task_id 对应的任务信息
+        cursor.execute("""
+                    SELECT task_title, task_description, due_date, patient_id 
+                    FROM tasks 
+                    WHERE task_id = %s
+                """, (task_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            print(f"❌ 任务 ID {task_id} 不存在")
+            emit('task_title_updated', {'task_id': None, 'error': 'Task not found'}, broadcast=False)
+            return
+
+        old_task_title, task_description, due_date, patient_id = result
+        # 更新所有相同 task_description、due_date、patient_id 的任务标题
+        cursor.execute("""
+                    UPDATE tasks
+                    SET task_title = %s
+                    WHERE task_description = %s 
+                      AND due_date = %s 
+                      AND patient_id = %s
+                """, (new_task_title, task_description, due_date, patient_id))
+
+        updated_rows = cursor.rowcount  # 获取被更新的行数
+        connection.commit()
+        # 3. 发送更新信息给客户端
+        emit('task_title_updated', {
+            'task_id': task_id,
+            'new_task_title': new_task_title,
+            'updated_rows': updated_rows
+        }, broadcast=True)
+
+    except pymysql.IntegrityError:
+        print(f"❌ 任务标题 '{new_task_title}' 已存在，更新失败")
+        emit('task_title_updated', {
+            'task_id': None, 'error': 'Task title already exists'
+        }, broadcast=False)
+    except pymysql.MySQLError as e:
+        logging.error(f"❌ Error updating task title: {e}")
+        emit('task_title_updated', {'task_id': None, 'error': str(e)}, broadcast=False)
+    finally:
+        cursor.close()
+        connection.close()
+
 @socketio.on('update_task_details')
 def update_task_details(data):
     """更新任务详情"""
@@ -245,8 +313,6 @@ def update_task_details(data):
         cursor.execute(query, (task_description, due_date, status, assigned_doctor_id, task_id))
         connection.commit()
 
-        print(f"任务更新成功: {data}")
-
         # 发送任务更新通知给相关医生
         emit('task_updated', {'assigned_doctor_id': assigned_doctor_id, 'task_id': task_id}, broadcast=True)
 
@@ -258,9 +324,10 @@ def update_task_details(data):
         cursor.close()
         connection.close()
 
+
 @socketio.on('create_task')
 def create_task(data):
-    """批量创建任务，并分配给多个医生"""
+    """ 任务创建请求：先检查任务是否已存在 """
     try:
         connection = get_connection()
         cursor = connection.cursor()
@@ -269,29 +336,107 @@ def create_task(data):
         task_description = data['task_description']
         due_date = data['due_date']
         status = data['status']
-        assigned_doctor_ids = data['assigned_doctor_ids']  # 这里是一个列表
+        assigned_doctor_ids = data['assigned_doctor_ids']
         patient_id = data['patient_id']
-
-        # 记录插入的任务 ID
         created_task_ids = []
+        current_doctor_id = str(data.get('current_doctor_id'))  # 只检查当前医生
 
-        # 循环遍历所有医生，插入多条任务
-        for doctor_id in assigned_doctor_ids:
-            query = """
-                INSERT INTO tasks (task_title, task_description, due_date, status, assigned_doctor_id, patient_id)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(query, (task_title, task_description, due_date, status, doctor_id, patient_id))
-            created_task_ids.append(cursor.lastrowid)  # 记录任务 ID
+        # 先检查数据库是否已有相同任务标题的任务
+        cursor.execute("""
+            SELECT task_id, assigned_doctor_id, task_description, due_date, status, patient_id 
+            FROM tasks 
+            WHERE task_title = %s
+        """, (task_title,))
+        existing_tasks = cursor.fetchall()
 
-        connection.commit()  # 提交事务
+        if existing_tasks:
+            # **任务已存在，只检查当前医生是否已加入**
+            existing_doctor_ids = {row[1] for row in existing_tasks}  # {医生ID}
 
-        # 发送成功创建的任务列表给客户端
-        emit('task_created', {'task_ids': created_task_ids, 'message': '任务创建成功'}, broadcast=False)
+            if current_doctor_id in existing_doctor_ids:
+                # **医生已加入该任务**
+                emit('task_creation_failed', {'message': f'医生 {current_doctor_id} 已经加入了任务 "{task_title}"'},
+                     broadcast=False)
+            else:
+                # **医生未加入，询问是否要加入**
+                existing_task_info = [
+                    {'task_id': row[0], 'task_description': row[2], 'due_date': str(row[3]), 'status': row[4],
+                     'patient_id': row[5]}
+                    for row in existing_tasks
+                ]
+                emit('existing_task_found', {
+                    'task_title': task_title,
+                    'tasks': existing_task_info,
+                    'doctor_id': current_doctor_id
+                }, broadcast=False)
+
+        else:
+            # **任务不存在，遍历所有传入的医生并创建**
+            for doctor_id in assigned_doctor_ids:
+                new_task_id = insert_new_task(cursor, task_title, task_description, due_date, status, doctor_id,
+                                              patient_id)
+                created_task_ids.append(new_task_id)
+
+            connection.commit()
+            # 任务创建成功，更新前端
+            if created_task_ids:
+                emit('task_created', {'task_ids': created_task_ids, 'message': '任务创建成功'}, broadcast=True)
 
     except pymysql.MySQLError as e:
-        connection.rollback()  # 发生错误时回滚
-        logging.error(f"创建任务失败: {e}")
+        connection.rollback()
+        logging.error(f"❌ 创建任务失败: {e}")
+        emit('task_creation_failed', {'error': str(e)}, broadcast=False)
+    finally:
+        cursor.close()
+        connection.close()
+
+def insert_new_task(cursor, task_title, task_description, due_date, status, doctor_id, patient_id):
+    """ 插入新任务，并返回 task_id """
+    query = """
+        INSERT INTO tasks (task_title, task_description, due_date, status, assigned_doctor_id, patient_id)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    cursor.execute(query, (task_title, task_description, due_date, status, doctor_id, patient_id))
+    return cursor.lastrowid  # 返回插入的任务 ID
+
+
+@socketio.on('confirm_join_task')
+def confirm_join_task(response):
+    """ 处理医生确认加入已有任务 """
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        doctor_id = response['doctor_id']
+        task_title = response['task_title']
+        confirm = response['confirm']
+
+        if confirm:
+            # **医生确认加入任务**
+            cursor.execute("""
+                SELECT task_description, due_date, patient_id 
+                FROM tasks 
+                WHERE task_title = %s 
+                LIMIT 1
+            """, (task_title,))
+            task_data = cursor.fetchone()
+            if task_data:
+                task_description, due_date, patient_id = task_data
+                new_task_id = insert_new_task(cursor, task_title, task_description, due_date, "pending", doctor_id,
+                                              patient_id)
+                connection.commit()
+
+                emit('task_updated', {'task_title': task_title, 'updated_tasks': [new_task_id]}, broadcast=True)
+            else:
+                emit('task_creation_failed', {'message': '任务不存在，无法加入'}, broadcast=False)
+
+        else:
+            # **医生拒绝加入任务**
+            emit('task_creation_failed', {'message': f'医生 {doctor_id} 拒绝加入任务 "{task_title}"'}, broadcast=False)
+
+    except pymysql.MySQLError as e:
+        connection.rollback()
+        logging.error(f"❌ 医生加入任务失败: {e}")
         emit('task_creation_failed', {'error': str(e)}, broadcast=False)
     finally:
         cursor.close()
