@@ -7,22 +7,6 @@ from sqlalchemy.dialects.mysql import ENUM
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
-# 数据库连接设置（MySQL）
-
-#connection_string = "mysql+pymysql://root:hys12138@localhost:3306/pelvis"
-
-# 创建 SQLAlchemy 引擎
-#engine = create_engine(connection_string)
-
-# 测试 SQLAlchemy 连接
-# try:
-#     with engine.connect() as connection:
-#         print("SQLAlchemy 连接成功")
-# except Exception as e:
-#     print("SQLAlchemy 连接失败:", e)
-#
-# Session = sessionmaker(bind=engine)
-# session = Session()
 
 Base = declarative_base()
 
@@ -154,7 +138,7 @@ def get_connection():
         '''cursor = connection.cursor()
         try:
             # 删除表格的 SQL 语句
-            cursor.execute("DROP TABLE IF EXISTS documents")
+            cursor.execute("DROP TABLE IF EXISTS tasks")
             #cursor.execute("DROP TABLE IF EXISTS patients")
             connection.commit()  # 提交事务
             print("Table deleted successfully!")
@@ -544,8 +528,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
-
 insert_doctor(1, "Dr. John Doe", "password123", "1234567890", "Orthopedics")
 insert_doctor(2, "Dr. Doe", "password123", "1234567890", "Orthopedics")
 insert_doctor(3, "Dr. Jane Smith", "password456", "2345678901", "Cardiology")
@@ -554,11 +536,7 @@ insert_doctor(5, "Dr. Michael Brown", "password101", "4567890123", "Dermatology"
 insert_doctor(6, "Dr. Lisa Green", "password202", "5678901234", "Neurology")
 insert_doctor(7, "Dr. Mark Lee", "password303", "6789012345", "Gastroenterology")
 
-# 假设要插入一条聊天记录
-#insert_chat_record(2, 1, "Damn it!")
-#insert_chat_record(2, 1, "Shit!")
-#insert_chat_record(3, 1, "Shit!")
-#insert_chat_record(1, 3, "ok!")
+
 # 示例：插入一条病人信息
 insert_patient(
     patient_id="P00001",
@@ -582,6 +560,14 @@ insert_fracture_history(
     fracture_location="pelvis",
     severity_level="moderate",
     diagnosis_details="Fracture at the pelvic region."
+)
+insert_fracture_history(
+    history_id="F00004",
+    patient_id="P00001",
+    fracture_date="2024-05-20",
+    fracture_location="pelvis",
+    severity_level="moderate",
+    diagnosis_details="Fracture."
 )
 # 插入第一条病人信息
 insert_patient(
@@ -643,7 +629,7 @@ insert_task(
 )
 
 insert_task(
-    task_id=3,
+    task_id=2,
     task_title="Review Medication Plan",
     task_description="Evaluate the patient's current medication plan and suggest adjustments if needed.",
     assigned_doctor_id=1,
@@ -651,7 +637,6 @@ insert_task(
     due_date="2025-03-02 10:30:00",
     status="in_progress"
 )
-
 # 在程序启动时初始化数据库
 if __name__ == "__main__":
     init_database()

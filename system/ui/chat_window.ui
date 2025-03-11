@@ -58,12 +58,7 @@
             <property name="text">
              <string>任务</string>
             </property>
-           </item>
-           <item>
-            <property name="text">
-             <string>文档</string>
-            </property>
-           </item>
+           </item>   
            <item>
             <property name="text">
              <string>笔记</string>
