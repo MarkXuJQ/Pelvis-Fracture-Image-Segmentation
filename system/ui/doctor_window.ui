@@ -129,7 +129,7 @@
            </column>
            <column>
             <property name="text">
-             <string>备注信息</string>
+             <string>诊断详情</string>
             </property>
            </column>
           </widget>

@@ -1,12 +1,14 @@
 import sys
 import json
 import datetime
+from functools import partial
+
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QFont
 from PyQt5.QtWidgets import (
     QApplication, QListView, QWidget, QVBoxLayout, QLabel, QPushButton, QMenu, QStyleOptionViewItem,
-    QStyledItemDelegate, QSpacerItem, QSizePolicy, QDateTimeEdit, QComboBox, QFrame
+    QStyledItemDelegate, QSpacerItem, QSizePolicy, QDateTimeEdit, QComboBox, QFrame, QMessageBox, QDialog
 )
-from PyQt5.QtCore import Qt, QSize, QDateTime, QTimer, QDate, QTime
+from PyQt5.QtCore import Qt, QSize, QDateTime, QTimer, QDate, QTime, QMetaObject
 import os
 import socketio
 from PyQt5 import uic
@@ -18,7 +20,6 @@ from qasync import QEventLoop
 import asyncio
 from delegate import  TaskItemDelegate
 from stylesheet import apply_stylesheet
-#from system.document import DocumentManagerWidget
 from taskdetails import TaskDetailsWidget
 
 class ChatApp(QMainWindow):
@@ -62,6 +63,16 @@ class ChatApp(QMainWindow):
         self.tabsList = self.findChild(QListWidget, "tabsList")
         self.tabsList.itemClicked.connect(self.switch_to_tab)
         self.welcomeLabel = self.findChild(QLabel, "welcomeLabel")
+        self.settingsButton.clicked.connect(self.show_settings_menu)
+        # 创建菜单（悬浮按钮）
+        self.settings_menu = QMenu(self)
+        # 创建菜单项
+        self.help_action = QAction("帮助", self)
+        self.exit_action = QAction("退出", self)
+        # 将菜单项添加到菜单中
+        self.settings_menu.addAction(self.help_action)
+        self.settings_menu.addAction(self.exit_action)
+        self.exit_action.triggered.connect(self.close)
 
     def switch_to_tab(self, item):
         selected_tab = item.text()
@@ -69,8 +80,6 @@ class ChatApp(QMainWindow):
             self.load_doctor_list()
         elif selected_tab == "任务":
             self.load_task_list()
-        elif selected_tab == "文档":
-            self.display_document_page()
         elif selected_tab == "笔记":
             self.display_note_page()
 
@@ -86,7 +95,6 @@ class ChatApp(QMainWindow):
 
     def on_doctor_list(self,data):
         if not self.is_listening:  # 如果 ChatApp 被禁用监听，就不执行
-            print("ChatApp 忽略 doctors_list 事件")
             return
         doctors = data.get('doctors', [])  # 获取医生列表
         self.doctors_list = data['doctors']  # 存储医生数据，避免重复请求
@@ -97,7 +105,6 @@ class ChatApp(QMainWindow):
             item = QListWidgetItem(doctor_name)
             item.setData(Qt.UserRole, (doctor_id,doctor_name))  # 绑定 doctor_id
             self.doctor_list.addItem(item)
-        print("ChatApp 更新医生列表:", self.doctors_list)
 
     def disable_listening(self):
         """禁用 ChatApp 对 doctors_list 事件的监听"""
@@ -106,6 +113,11 @@ class ChatApp(QMainWindow):
     def enable_listening(self):
         """启用 ChatApp 监听"""
         self.is_listening = True
+    def show_settings_menu(self):
+        """显示设置菜单"""
+        # 在按钮位置弹出菜单
+        self.settings_menu.exec_(self.settingsButton.mapToGlobal(self.settingsButton.rect().bottomLeft()))
+
     def on_receive_message(self, data):
         if data.get('sender_id') == self.receiver_id:
             self.chat_area.append(f"{self.receiver_name}: {data['message']}")
@@ -158,7 +170,7 @@ class ChatApp(QMainWindow):
         self.task_list = QListWidget(self)
         self.centerLayout.addWidget(self.task_list)
         # Set custom delegate for the task list
-        delegate = TaskItemDelegate(self.task_list,self.sio)
+        delegate = TaskItemDelegate(self.task_list,self.sio,self)
         self.task_list.setItemDelegate(delegate)
         data = {
             'assigned_doctor_id': self.sender_id
@@ -181,9 +193,9 @@ class ChatApp(QMainWindow):
         add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 禁止编辑
         add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)  # 禁止拖动
         self.task_list.addItem(add_task_item)  # 确保它在最后
+        if not self.task_list.receivers(self.task_list.itemClicked):
+            self.task_list.itemClicked.connect(self.on_task_clicked)
 
-        # 绑定 itemClicked 事件
-        self.task_list.itemClicked.connect(self.on_task_clicked)
     def on_task_clicked(self, item):
         self.clear_right_layout()
         if item.text() == "add task":
@@ -200,26 +212,13 @@ class ChatApp(QMainWindow):
             if widget and isinstance(widget, QListWidget):
                 widget.deleteLater()
 
-    def clear_right_layout(self):
+    def clear_right_layout(self,*args):
         """删除 right_layout 中的所有组件，但保留布局本身"""
         for i in range(self.rightLayout.count()):
             item = self.rightLayout.itemAt(i)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
-
-    def display_document_page(self):
-        self.remove_list_widget()
-        self.clear_right_layout()
-        #self.document = DocumentManagerWidget(self)
-
-        '''file_dialog = QFileDialog(self)
-        file_dialog.setFileMode(QFileDialog.ExistingFiles)
-        if file_dialog.exec_():
-            file_paths = file_dialog.selectedFiles()
-            # 选择文件上传逻辑
-            document_data = {'file_paths': file_paths, 'patient_id': self.receiver_id}
-            self.sio.emit('upload_document', document_data)'''
 
     def add_note(self):
         note_content = self.note_input.text()
@@ -252,6 +251,12 @@ class TaskCreationWidget:
         self.rightLayout = rightLayout  # 传递已有的布局
         self.init_ui()
         self.sio.on('patients_list', self.on_patients_list)
+        self.sio.on('existing_task_found', self.handle_existing_task)
+        self.sio.on('task_created', self.handle_task_created)
+        self.sio.on('task_updated', self.handle_task_updated)
+        self.sio.on('task_creation_failed', self.handle_task_creation_failed)
+        self.next_action = None
+        QTimer.singleShot(1000, self.execute)
 
     def init_ui(self):
         # 任务标题
@@ -292,7 +297,6 @@ class TaskCreationWidget:
 
     def on_patients_list(self, data):
         """处理服务器返回的病人列表"""
-        print("TaskCreationWidget 收到病人列表:", data['patients'])
         patients = data.get('patients', [])  # 获取病人列表
         for patient in patients:
             patient_id = patient["patient_id"]
@@ -305,7 +309,6 @@ class TaskCreationWidget:
         doctors = self.chat_app.doctors_list  # 直接从 ChatApp 获取数据
 
         if not doctors:  # 如果医生列表为空，则请求数据
-            print("TaskCreationWidget 发现医生列表为空，向 ChatApp 请求获取医生数据...")
             self.request_doctors_list()
             return  # 避免 UI 崩溃
 
@@ -324,12 +327,10 @@ class TaskCreationWidget:
         # 让 TaskCreationWidget 监听事件
         self.sio.on('doctors_list', self.on_doctor_list_temp)
         # 发送请求
-        print("TaskCreationWidget 正在向服务器请求医生列表...")
         self.sio.emit('get_doctors_except_user', {'user_id': self.chat_app.sender_id})
 
     def on_doctor_list_temp(self, data):
         """TaskCreationWidget 处理服务器返回的医生列表"""
-        print("TaskCreationWidget 收到医生列表:", data['doctors'])
         # 解析数据
         self.chat_app.doctors_list = data['doctors']
         # 更新 UI
@@ -338,21 +339,22 @@ class TaskCreationWidget:
         self.sio.on('doctors_list', None)  # 取消监听
         self.sio.on('doctors_list', self.chat_app.on_doctor_list)  # 恢复 ChatApp 监听
         self.chat_app.enable_listening()  # 重新启用 ChatApp 监听
+
     def create_task(self):
-        task_title = self.title_input.text()
-        task_description = self.description_input.toPlainText()
+        """ 创建任务，并处理是否加入已有任务 """
+        task_title = self.title_input.text().strip()
+        task_description = self.description_input.toPlainText().strip()
         due_date = self.due_date_input.dateTime().toString("yyyy-MM-dd HH:mm:ss")
         status = self.status_input.currentText()
         # 获取所有选中的医生 ID
-        assigned_doctors = [item.data(Qt.UserRole) for item in self.doctor_select.selectedItems()]  # 获取绑定的 doctor_id
-        # 添加当前用户 ID（self.sio.sender_id）
-        assigned_doctors.append(self.chat_app.sender_id)
-        patient_id = self.patient_select.currentData()  # 获取绑定的 patient_id
+        assigned_doctors = [item.data(Qt.UserRole) for item in self.doctor_select.selectedItems()]
+        assigned_doctors.append(self.chat_app.sender_id)  # **添加当前医生**
+        patient_id = self.patient_select.currentData()
         if not assigned_doctors:
-            print("错误：未选择医生！")
+            QMessageBox.warning(None, "错误", "未选择医生！")
             return
         if patient_id is None:
-            print("错误：未选择病人！")
+            QMessageBox.warning(None, "错误", "未选择病人！")
             return
         data = {
             'task_title': task_title,
@@ -361,22 +363,96 @@ class TaskCreationWidget:
             'status': status,
             'assigned_doctor_ids': assigned_doctors,
             'patient_id': patient_id,
+            'current_doctor_id': self.chat_app.sender_id,
         }
+        # **发送创建任务请求**
         self.sio.emit('create_task', data)
-        # 清空输入框
-        self.title_input.clear()
-        self.description_input.clear()
-        self.due_date_input.setDateTime(QDateTime.currentDateTime())
-        self.status_input.setCurrentIndex(0)
-        # 清空医生选择（QListWidget）
-        self.doctor_select.clearSelection()  # 取消所有选中项
-        # 清空病人选择（QComboBox）
-        self.patient_select.setCurrentIndex(0)
-        # 任务创建后，延迟 1 秒再更新任务列表，确保数据库写入完成
-        QTimer.singleShot(1000, self.chat_app.load_task_list)
 
+    def execute(self):
+        if self.next_action == "show_dialog":
+            self.show_confirmation_dialog()
+        elif self.next_action == "update_list":
+            self.chat_app.load_task_list()
+        elif self.next_action == "creation_failed":
+            QMessageBox.warning(None, "错误", self.message)
+        elif self.next_action == "update_task":
+            QMessageBox.warning(None, "成功", "成功加入该任务！")
+            self.chat_app.load_task_list()
+        # 重置 next_action，避免重复执行
+        self.next_action = None
+        QTimer.singleShot(1000, self.execute)
 
+    def handle_existing_task(self, response):
+        """ 处理服务器返回的已有任务，询问医生是否加入 """
+        self.task_title = response.get('task_title')
+        existing_tasks = response.get('tasks', [])
+        self.doctor_id = response.get('doctor_id')
+        self.task_info = "\n".join([
+            f"任务 ID: {task['task_id']}, 描述: {task['task_description']}, 截止日期: {task['due_date']}"
+            for task in existing_tasks
+        ])
+        self.next_action = "show_dialog"
+    def show_confirmation_dialog(self):
+        """ 显示任务确认弹窗 """
+        self.next_action = None
+        self.dialog = ConfirmationDialog(self.task_title, self.task_info , self.doctor_id)  # **存活实例，防止被回收**
+        result = self.dialog.get_result()  # **等待用户选择**
+        if result == QDialog.DialogCode.Accepted:
+            print("✅ 用户选择：是")
+            self.confirm_join_task()
+        else:
+            print("❌ 用户选择：否")
+    def confirm_join_task(self):
+        """ 发送确认加入任务的请求 """
+        self.sio.emit('confirm_join_task', {
+            'confirm': True,
+            'task_title': self.task_title,
+            'doctor_id': self.user_id
+        })
+    def handle_task_created(self, response):
+        """ 任务创建成功，清空输入并更新任务列表 """
+        self.next_action = "update_list"
+    def handle_task_updated(self,response):
+        self.next_action = "update_task"
+    def handle_task_creation_failed(self, response):
+        """ 处理任务创建失败（医生已加入任务） """
+        self.message = response.get('message', "任务创建失败")
+        self.next_action = "creation_failed"
 
+class ConfirmationDialog(QDialog):
+    """ 自定义任务加入确认窗口 """
+    def __init__(self, task_title, task_info, doctor_id,parent=None):
+        super().__init__(parent)
+        apply_stylesheet(self)
+        self.setWindowTitle("任务已存在")
+        self.doctor_id = doctor_id
+        self.task_title = task_title
+        self.setMinimumSize(400, 200)  # 防止窗口最小化为空白
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)  # 确保窗口前置
+        # 创建布局
+        layout = QVBoxLayout()
+        # 任务信息
+        label = QLabel(f"任务 '{task_title}' 已存在，是否加入？\n\n{task_info}")
+        label.setWordWrap(True)  # 确保文字换行
+        layout.addWidget(label)
+        # 按钮区域
+        button_layout = QHBoxLayout()
+        yes_button = QPushButton("是")
+        no_button = QPushButton("否")
+
+        button_layout.addWidget(yes_button)
+        button_layout.addWidget(no_button)
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+        # 绑定事件
+        yes_button.clicked.connect(self.accept)
+        no_button.clicked.connect(self.reject)
+        # **避免 UI 阻塞**
+        QTimer.singleShot(50, self.activateWindow)  # 让窗口立即激活
+    def get_result(self):
+        """ 显示窗口而不阻塞 UI """
+        return self.exec()  # 阻塞 UI 线程，等待用户输入
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
@@ -388,5 +464,3 @@ if __name__ == "__main__":
 
     loop.run_forever() # Start the event loop
     sys.exit(app.exec_())
-
-
