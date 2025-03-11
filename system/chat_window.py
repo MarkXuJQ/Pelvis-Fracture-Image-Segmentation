@@ -18,7 +18,7 @@ from qasync import QEventLoop
 import asyncio
 from delegate import  TaskItemDelegate
 from stylesheet import apply_stylesheet
-from system.document import DocumentManagerWidget
+#from system.document import DocumentManagerWidget
 from taskdetails import TaskDetailsWidget
 
 class ChatApp(QMainWindow):
