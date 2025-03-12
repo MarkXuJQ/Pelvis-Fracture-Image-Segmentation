@@ -13,6 +13,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.patches as mpatches
 import matplotlib.font_manager as fm
+import matplotlib.colors as mcolors
 
 # 设置中文字体
 matplotlib.rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'sans-serif']
@@ -67,6 +68,7 @@ class InteractiveCanvas(FigureCanvas):
         # 添加存储已绘制框的列表
         self.box_rects = []  # 存储已绘制的所有框
         self.box_colors = ['red', 'blue', 'green', 'purple', 'orange', 'cyan', 'magenta', 'yellow']
+        self.current_color_idx = 0  # 当前使用的颜色索引
         
     def display_image(self, img):
         """显示图像"""
@@ -137,6 +139,14 @@ class InteractiveCanvas(FigureCanvas):
         self.start_y = None
         self.draw_idle()
         
+    def set_current_color_index(self, idx):
+        """设置当前使用的颜色索引"""
+        self.current_color_idx = idx % len(self.box_colors)
+        
+    def get_current_color(self):
+        """获取当前使用的颜色"""
+        return self.box_colors[self.current_color_idx]
+        
     def on_mouse_press(self, event):
         """鼠标按下事件"""
         if event.inaxes != self.axes or self.current_image is None:
@@ -147,6 +157,9 @@ class InteractiveCanvas(FigureCanvas):
             self.drawing_box = True
             self.start_x, self.start_y = event.xdata, event.ydata
             
+            # 获取当前颜色
+            current_color = self.get_current_color()
+            
             # 绘制起始点
             if self.start_marker and self.start_marker in self.axes.patches:
                 self.start_marker.remove()
@@ -154,7 +167,7 @@ class InteractiveCanvas(FigureCanvas):
             self.start_marker = plt.Circle(
                 (self.start_x, self.start_y), 
                 radius=self.point_size/2, 
-                color='red',
+                color=current_color,
                 fill=True,
                 alpha=0.7
             )
@@ -192,6 +205,9 @@ class InteractiveCanvas(FigureCanvas):
         if not self.drawing_box or not self.box_mode or event.inaxes != self.axes:
             return
             
+        # 获取当前颜色
+        current_color = self.get_current_color()
+        
         # 更新结束点
         if self.end_marker and self.end_marker in self.axes.patches:
             self.end_marker.remove()
@@ -199,7 +215,7 @@ class InteractiveCanvas(FigureCanvas):
         self.end_marker = plt.Circle(
             (event.xdata, event.ydata), 
             radius=self.point_size/2, 
-            color='red',
+            color=current_color,
             fill=True,
             alpha=0.7
         )
@@ -217,7 +233,7 @@ class InteractiveCanvas(FigureCanvas):
         self.box_rect = mpatches.Rectangle(
             (x, y), width, height,
             linewidth=2,
-            edgecolor='red',
+            edgecolor=current_color,
             facecolor='none',
             alpha=0.7
         )
@@ -263,6 +279,9 @@ class InteractiveCanvas(FigureCanvas):
         self.box_rects.append(rect)
         self.draw_idle()
         
+        # 返回使用的颜色
+        return color
+        
     def draw_all_boxes(self, boxes):
         """绘制所有保存的框"""
         # 先清除之前的框
@@ -291,69 +310,92 @@ class MedicalImageApp(QMainWindow):
         self.points = []  # 点提示列表 [(x1, y1, label1), (x2, y2, label2), ...]
         self.point_labels = []  # 点标签列表 [label1, label2, ...]
         self.boxes = []  # 框提示列表 [[x1, y1, x2, y2], [x1, y1, x2, y2], ...]
+        self.box_colors = []  # 框颜色
+        self.box_masks = []  # 每个框对应的掩码
         self.current_slice = 0  # 当前3D图像切片
+        
+        # 添加三视图相关变量
+        self.current_view = 'axial'  # 当前活动视图: 'axial', 'coronal', 'sagittal'
+        self.axial_slice = 0
+        self.coronal_slice = 0
+        self.sagittal_slice = 0
         
         # 初始化UI
         self.initUI()
         
     def initUI(self):
-        # 创建主布局
-        main_widget = QWidget()
-        main_layout = QVBoxLayout(main_widget)
+        # 创建中央部件和主布局
+        central_widget = QWidget()
+        main_layout = QHBoxLayout(central_widget)
+        self.setCentralWidget(central_widget)
         
-        # 创建工具栏
-        toolbar = QToolBar("主工具栏")
-        self.addToolBar(toolbar)
+        # 创建左侧控制面板
+        control_panel = QWidget()
+        control_panel.setFixedWidth(250)  # 设置控制面板宽度
+        control_layout = QVBoxLayout(control_panel)
+        control_layout.setSpacing(15)
         
-        # 添加文件操作按钮
+        # 1. 文件操作按钮
+        file_group = QGroupBox("文件操作")
+        file_layout = QVBoxLayout(file_group)
+        
         open_btn = QPushButton("打开图像")
         open_btn.clicked.connect(self.open_image)
-        toolbar.addWidget(open_btn)
+        file_layout.addWidget(open_btn)
         
         self.save_btn = QPushButton("保存结果")
         self.save_btn.clicked.connect(self.save_result)
         self.save_btn.setEnabled(False)
-        toolbar.addWidget(self.save_btn)
+        file_layout.addWidget(self.save_btn)
         
-        toolbar.addSeparator()
+        control_layout.addWidget(file_group)
         
-        # 添加模型选择器
-        model_label = QLabel("选择模型:")
-        toolbar.addWidget(model_label)
+        # 2. 模型选择
+        model_group = QGroupBox("模型选择")
+        model_layout = QVBoxLayout(model_group)
         
         self.model_selector = QComboBox()
         for model_name, model_info in self.available_models.items():
             self.model_selector.addItem(f"{model_name}: {model_info['description']}")
-            
-        toolbar.addWidget(self.model_selector)
         self.model_selector.currentIndexChanged.connect(self.on_model_changed)
+        model_layout.addWidget(self.model_selector)
         
-        toolbar.addSeparator()
+        control_layout.addWidget(model_group)
         
-        # 添加分割按钮
-        segment_btn = QPushButton("分割")
-        segment_btn.clicked.connect(self.segment_image)
-        toolbar.addWidget(segment_btn)
+        # 3. 3D切面选择 (初始隐藏)
+        self.view_group = QGroupBox("切面选择")
+        view_layout = QVBoxLayout(self.view_group)
         
-        # 创建图像显示区域
-        display_layout = QHBoxLayout()
+        # 视图类型选择
+        view_type_layout = QHBoxLayout()
+        view_type_label = QLabel("视图类型:")
+        self.view_type_combo = QComboBox()
+        self.view_type_combo.addItems(["轴状视图", "冠状视图", "矢状视图"])
+        self.view_type_combo.currentIndexChanged.connect(self.on_view_type_changed)
+        view_type_layout.addWidget(view_type_label)
+        view_type_layout.addWidget(self.view_type_combo)
+        view_layout.addLayout(view_type_layout)
         
-        # 原始图像区域
-        original_group = QGroupBox("原始图像")
-        original_layout = QVBoxLayout()
+        # 切片滑块
+        slice_layout = QVBoxLayout()
+        self.slice_label = QLabel("切片: 0/0")
+        self.slice_slider = QSlider(Qt.Horizontal)
+        self.slice_slider.setTickPosition(QSlider.TicksBelow)
+        self.slice_slider.valueChanged.connect(self.update_slice)
+        slice_layout.addWidget(self.slice_label)
+        slice_layout.addWidget(self.slice_slider)
+        view_layout.addLayout(slice_layout)
         
-        # 创建交互式画布显示原始图像
-        original_fig = Figure(figsize=(5, 5), dpi=100)
-        self.original_view = InteractiveCanvas(original_fig)
-        self.original_view.pointAdded.connect(self.on_point_added)
-        self.original_view.boxDrawn.connect(self.on_box_drawn)
+        control_layout.addWidget(self.view_group)
+        self.view_group.setVisible(False)  # 初始隐藏
         
-        original_layout.addWidget(self.original_view)
-        
-        # 创建点提示控制区
-        prompt_controls_layout = QHBoxLayout()
+        # 4. 点和框提示工具 (初始隐藏)
+        self.prompt_group = QGroupBox("交互提示工具")
+        prompt_layout = QVBoxLayout(self.prompt_group)
         
         # 点提示类型
+        point_type_layout = QVBoxLayout()
+        point_type_label = QLabel("点提示类型:")
         self.point_type_group = QButtonGroup(self)
         self.fg_radio = QRadioButton("前景点 (左键)")
         self.fg_radio.setChecked(True)
@@ -362,10 +404,12 @@ class MedicalImageApp(QMainWindow):
         self.point_type_group.addButton(self.bg_radio, 0)
         self.point_type_group.buttonClicked.connect(self.on_point_type_changed)
         
-        prompt_controls_layout.addWidget(self.fg_radio)
-        prompt_controls_layout.addWidget(self.bg_radio)
+        point_type_layout.addWidget(point_type_label)
+        point_type_layout.addWidget(self.fg_radio)
+        point_type_layout.addWidget(self.bg_radio)
+        prompt_layout.addLayout(point_type_layout)
         
-        # 添加框选模式按钮
+        # 框模式开关
         self.box_mode_btn = QPushButton("框选模式 📦")
         self.box_mode_btn.setCheckable(True)
         self.box_mode_btn.setChecked(False)
@@ -381,79 +425,323 @@ class MedicalImageApp(QMainWindow):
                 border: 2px solid #3498DB;
             }
         """)
-        prompt_controls_layout.addWidget(self.box_mode_btn)
+        prompt_layout.addWidget(self.box_mode_btn)
         
-        # 清除点提示按钮
-        self.clear_points_btn = QPushButton("清除点")
+        # 清除按钮
+        clear_btns_layout = QVBoxLayout()
+        self.clear_points_btn = QPushButton("清除所有点")
         self.clear_points_btn.clicked.connect(self.clear_points)
         self.clear_points_btn.setEnabled(False)
-        prompt_controls_layout.addWidget(self.clear_points_btn)
         
-        # 清除最后一个框按钮
-        self.clear_last_box_btn = QPushButton("清除最后框")
-        self.clear_last_box_btn.clicked.connect(self.clear_last_box)
-        self.clear_last_box_btn.setEnabled(False)
-        prompt_controls_layout.addWidget(self.clear_last_box_btn)
-        
-        # 清除所有框按钮
         self.clear_box_btn = QPushButton("清除所有框")
         self.clear_box_btn.clicked.connect(self.clear_box)
         self.clear_box_btn.setEnabled(False)
-        prompt_controls_layout.addWidget(self.clear_box_btn)
         
-        original_layout.addLayout(prompt_controls_layout)
+        self.clear_last_box_btn = QPushButton("清除最后一个框")
+        self.clear_last_box_btn.clicked.connect(self.clear_last_box)
+        self.clear_last_box_btn.setEnabled(False)
         
-        # 3D图像切片滑块
-        self.slice_slider_container = QWidget()
-        slice_layout = QHBoxLayout(self.slice_slider_container)
-        slice_label = QLabel("切片:")
+        clear_btns_layout.addWidget(self.clear_points_btn)
+        clear_btns_layout.addWidget(self.clear_box_btn)
+        clear_btns_layout.addWidget(self.clear_last_box_btn)
+        prompt_layout.addLayout(clear_btns_layout)
+        
+        control_layout.addWidget(self.prompt_group)
+        self.prompt_group.setVisible(False)  # 初始隐藏
+        
+        # 5. 分割按钮
+        segment_group = QGroupBox("分割操作")
+        segment_layout = QVBoxLayout(segment_group)
+        
+        self.segment_btn = QPushButton("执行分割")
+        self.segment_btn.clicked.connect(self.segment_image)
+        self.segment_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2ECC71;
+                color: white;
+                font-weight: bold;
+                height: 40px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #27AE60;
+            }
+            QPushButton:pressed {
+                background-color: #1E8449;
+            }
+        """)
+        segment_layout.addWidget(self.segment_btn)
+        
+        control_layout.addWidget(segment_group)
+        
+        # 添加弹性占位符
+        control_layout.addStretch(1)
+        
+        # 添加控制面板到主布局
+        main_layout.addWidget(control_panel)
+        
+        # 创建右侧图像显示区域（改为横向排列）
+        image_display = QWidget()
+        image_layout = QHBoxLayout(image_display)  # 改为横向布局
+        
+        # 原始图像显示
+        original_group = QGroupBox("原始图像")
+        original_layout = QVBoxLayout(original_group)
+        
+        original_fig = Figure(figsize=(5, 5), dpi=100)
+        self.original_view = InteractiveCanvas(original_fig)
+        self.original_view.pointAdded.connect(self.on_point_added)
+        self.original_view.boxDrawn.connect(self.on_box_drawn)
+        
+        original_layout.addWidget(self.original_view)
+        
+        # 3D切片滑块（仅在3D模式显示）
+        slice_control = QWidget()
+        slice_layout = QHBoxLayout(slice_control)
+        
+        self.slice_label = QLabel("切片: 0/0")
         self.slice_slider = QSlider(Qt.Horizontal)
         self.slice_slider.setTickPosition(QSlider.TicksBelow)
         self.slice_slider.valueChanged.connect(self.update_slice)
-        slice_layout.addWidget(slice_label)
+        
+        slice_layout.addWidget(self.slice_label)
         slice_layout.addWidget(self.slice_slider)
-        self.slice_slider_container.setVisible(False)
         
-        original_layout.addWidget(self.slice_slider_container)
+        original_layout.addWidget(slice_control)
+        slice_control.setVisible(False)  # 初始隐藏
+        self.slice_control_widget = slice_control
+        
+        # 设置原始图像组的布局
         original_group.setLayout(original_layout)
+        image_layout.addWidget(original_group)
         
-        # 结果显示区域
+        # 分割结果显示
         result_group = QGroupBox("分割结果")
-        result_layout = QVBoxLayout()
+        result_layout = QVBoxLayout(result_group)
         
-        # 创建结果图像显示
         result_fig = Figure(figsize=(5, 5), dpi=100)
         self.result_canvas = FigureCanvas(result_fig)
         self.result_ax = result_fig.add_subplot(111)
         self.result_ax.axis('off')
         
         result_layout.addWidget(self.result_canvas)
+        
+        # 设置分割结果组的布局
         result_group.setLayout(result_layout)
+        image_layout.addWidget(result_group)
         
-        # 添加两个显示区域
-        display_layout.addWidget(original_group)
-        display_layout.addWidget(result_group)
-        
-        # 添加图像显示区域到主布局
-        main_layout.addLayout(display_layout)
-        
-        # 设置中央部件
-        self.setCentralWidget(main_widget)
-        
-        # 默认隐藏点提示控件，直到选择MedSAM模型
-        self.prompt_controls_widget = QWidget()
-        self.prompt_controls_widget.setLayout(prompt_controls_layout)
-        self.prompt_controls_widget.setVisible(False)
-        original_layout.addWidget(self.prompt_controls_widget)
+        # 添加图像显示区到主布局
+        main_layout.addWidget(image_display, 1)  # 1是拉伸因子，使其占用更多空间
         
         # 初始检查模型选择
         self.on_model_changed(self.model_selector.currentIndex())
         
+    def clear_points(self):
+        """清除所有点提示"""
+        self.points = []
+        self.point_labels = []
+        self.original_view.clear_points()
+        self.clear_points_btn.setEnabled(False)
+        
+        # 更新显示
+        self.update_display()
+        
+    def on_model_changed(self, index):
+        """当模型选择改变时调用"""
+        selected_text = self.model_selector.currentText()
+        model_name = selected_text.split(':')[0]
+        
+        # 如果选择的是MedSAM模型，显示点提示控件
+        self.prompt_group.setVisible(model_name == 'medsam')
+        
+        # 清除当前的点提示和框
+        self.clear_points()
+        self.clear_box()
+        
+    def on_point_type_changed(self, button):
+        """当点提示类型改变时调用"""
+        is_foreground = button.text().startswith("前景")
+        self.original_view.set_foreground_point(is_foreground)
+            
+    def on_box_mode_clicked(self):
+        """当框选模式按钮点击时调用"""
+        is_checked = self.box_mode_btn.isChecked()
+        self.original_view.set_box_mode(is_checked)
+        
+        # 设置下一个框的颜色索引
+        next_color_idx = len(self.boxes) % len(self.original_view.box_colors)
+        self.original_view.set_current_color_index(next_color_idx)
+        
+        # 更新UI状态
+        if is_checked:
+            self.box_mode_btn.setText("点击模式 👆")
+            self.fg_radio.setEnabled(False)
+            self.bg_radio.setEnabled(False)
+        else:
+            self.box_mode_btn.setText("框选模式 📦")
+            self.fg_radio.setEnabled(True)
+            self.bg_radio.setEnabled(True)
+            
+    def on_view_type_changed(self, index):
+        """当视图类型改变时调用"""
+        if not hasattr(self, 'processor') or self.processor.image_data is None or not self.processor.is_3d:
+            return
+            
+        if index == 0:
+            self.current_view = 'axial'
+            self.current_slice = self.axial_slice
+            # 更新滑块范围
+            depth = self.processor.image_data.shape[0]
+            self.slice_slider.setMaximum(depth - 1)
+            self.slice_slider.setValue(self.axial_slice)
+            self.slice_label.setText(f"切片: {self.axial_slice}/{depth - 1}")
+        elif index == 1:
+            self.current_view = 'coronal'
+            self.current_slice = self.coronal_slice
+            # 更新滑块范围
+            height = self.processor.image_data.shape[1]
+            self.slice_slider.setMaximum(height - 1)
+            self.slice_slider.setValue(self.coronal_slice)
+            self.slice_label.setText(f"切片: {self.coronal_slice}/{height - 1}")
+        elif index == 2:
+            self.current_view = 'sagittal'
+            self.current_slice = self.sagittal_slice
+            # 更新滑块范围
+            width = self.processor.image_data.shape[2]
+            self.slice_slider.setMaximum(width - 1)
+            self.slice_slider.setValue(self.sagittal_slice)
+            self.slice_label.setText(f"切片: {self.sagittal_slice}/{width - 1}")
+            
+        # 清除当前点和框
+        self.clear_points()
+        self.clear_box()
+        
+        # 更新显示
+        self.update_display()
+    
+    def update_slice(self, value):
+        """更新当前切片"""
+        if self.processor.is_3d and self.processor.image_data is not None:
+            # 保存当前视图对应的切片索引
+            if self.current_view == 'axial':
+                self.axial_slice = value
+            elif self.current_view == 'coronal':
+                self.coronal_slice = value
+            elif self.current_view == 'sagittal':
+                self.sagittal_slice = value
+                
+            # 更新切片标签
+            total_slices = self.slice_slider.maximum()
+            self.slice_label.setText(f"切片: {value}/{total_slices}")
+            
+            # 清除当前显示的点和框
+            self.original_view.clear_points()
+            self.points = []
+            self.point_labels = []
+            self.original_view.clear_box()
+            self.boxes = []
+            
+            # 更新清除按钮状态
+            self.clear_points_btn.setEnabled(False)
+            self.clear_box_btn.setEnabled(False)
+            self.clear_last_box_btn.setEnabled(False)
+            
+            # 刷新显示
+            self.update_display()
+            
+    def update_display(self):
+        """更新显示内容"""
+        if not hasattr(self, 'processor') or self.processor.image_data is None:
+            return
+            
+        # 根据当前视图类型获取对应的切片
+        if self.processor.is_3d:
+            if self.current_view == 'axial':
+                img = self.processor.image_data[self.axial_slice]
+            elif self.current_view == 'coronal':
+                # 取冠状面(前额面)切片，需要重新组织数据
+                img = self.processor.image_data[:, self.coronal_slice, :]
+            elif self.current_view == 'sagittal':
+                # 取矢状面切片，需要重新组织数据
+                img = self.processor.image_data[:, :, self.sagittal_slice]
+            else:
+                return
+        else:
+            img = self.processor.image_data
+        
+        # 显示原始图像
+        self.original_view.display_image(img)
+        
+        # 显示框和点提示
+        for box in self.boxes:
+            self.original_view.draw_saved_box(box)
+        
+        # 如果有分割结果，显示结果
+        if self.mask is not None:
+            self.display_result(img)
+    
+    def display_result(self, img):
+        """显示分割结果"""
+        if self.mask is None:
+            return
+            
+        # 获取当前视图的掩码
+        if self.processor.is_3d:
+            if self.current_view == 'axial':
+                mask_slice = self.mask[self.axial_slice]
+            elif self.current_view == 'coronal':
+                mask_slice = self.mask[:, self.coronal_slice, :]
+            elif self.current_view == 'sagittal':
+                mask_slice = self.mask[:, :, self.sagittal_slice]
+            else:
+                return
+        else:
+            mask_slice = self.mask
+        
+        # 清除之前的绘图
+        self.result_ax.clear()
+        
+        # 显示原始图像
+        if len(img.shape) == 3:  # 彩色图像
+            self.result_ax.imshow(img)
+        else:  # 灰度图像
+            self.result_ax.imshow(img, cmap='gray')
+        
+        # 使用不同颜色显示每个框的分割结果
+        if self.box_masks and self.box_colors:
+            for i, (mask, color) in enumerate(zip(self.box_masks, self.box_colors)):
+                # 将matplotlib颜色转换为RGB值
+                if isinstance(color, str):
+                    # 如果颜色是字符串(如'red')，转换为RGB
+                    rgb = mcolors.to_rgb(color)
+                    r, g, b = [int(c * 255) for c in rgb]
+                else:
+                    # 如果已经是RGB元组
+                    r, g, b = [int(c * 255) for c in color]
+                
+                # 创建彩色掩码
+                colored_mask = np.zeros((*mask.shape, 4), dtype=np.float32)
+                colored_mask[mask > 0] = [r/255, g/255, b/255, 0.6]  # 更高的透明度
+                
+                # 显示掩码
+                self.result_ax.imshow(colored_mask)
+        else:
+            # 如果没有框特定的掩码，使用默认红色显示整体掩码
+            colored_mask = np.zeros((*mask_slice.shape, 4), dtype=np.float32)
+            colored_mask[mask_slice > 0] = [1, 0, 0, 0.6]  # 红色，透明度0.6
+            self.result_ax.imshow(colored_mask)
+        
+        self.result_ax.axis('off')
+        self.result_canvas.draw()
+    
     def open_image(self):
-        """打开并显示图像"""
+        """打开医学图像文件"""
         options = QFileDialog.Options()
-        file_types = "医学图像 (*.mha *.nii *.nii.gz *.tif *.jpg *.png);;所有文件 (*)"
-        file_path, _ = QFileDialog.getOpenFileName(self, "打开医学图像", "", file_types, options=options)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "打开医学图像", "", 
+            "医学图像 (*.nii *.nii.gz *.dcm *.png *.jpg *.tif);;所有文件 (*)", 
+            options=options
+        )
         
         if not file_path:
             return
@@ -465,66 +753,52 @@ class MedicalImageApp(QMainWindow):
             # 清除之前的分割结果
             self.mask = None
             self.points = []
-            self.point_labels = []
-            self.boxes = []  # 修改为清空框列表
-            self.clear_points_btn.setEnabled(False)
-            self.clear_box_btn.setEnabled(False)
-            self.save_btn.setEnabled(False)
+            self.boxes = []
             
-            # 设置3D图像切片控制
+            # 重置视图变量
+            self.axial_slice = 0
+            self.coronal_slice = 0
+            self.sagittal_slice = 0
+            
+            # 更新显示
             if self.processor.is_3d:
-                self.slice_slider_container.setVisible(True)
-                self.slice_slider.setMinimum(0)
-                self.slice_slider.setMaximum(self.processor.image_data.shape[0] - 1)
+                # 如果是3D图像，设置切片控制器
+                depth, height, width = self.processor.image_data.shape
+                
+                # 显示3D切面选择面板
+                self.view_group.setVisible(True)
+                
+                # 设置默认为轴状视图，更新滑块
+                self.view_type_combo.setCurrentIndex(0)
+                self.current_view = 'axial'
+                self.slice_slider.setMaximum(depth - 1)
                 self.slice_slider.setValue(0)
-                self.current_slice = 0
+                self.slice_label.setText(f"切片: 0/{depth - 1}")
+                
+                # 显示切片控制器
+                self.slice_control_widget.setVisible(True)
                 
                 # 显示初始切片
-                self.original_view.display_image(self.processor.image_data[0])
+                self.update_display()
             else:
-                self.slice_slider_container.setVisible(False)
+                # 如果是2D图像，隐藏切片控制器
+                self.view_group.setVisible(False)
+                self.slice_control_widget.setVisible(False)
+                
+                # 显示图像
                 self.original_view.display_image(self.processor.image_data)
                 
-            # 清除结果显示
-            self.result_ax.clear()
-            self.result_ax.axis('off')
-            self.result_canvas.draw()
+            # 启用保存按钮
+            self.save_btn.setEnabled(True)
+            
+            # 更新界面状态
+            selected_model = self.model_selector.currentText().split(':')[0]
+            self.prompt_group.setVisible(selected_model == 'medsam')
             
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"加载图像时出错: {str(e)}")
-            
-    def on_point_type_changed(self, button):
-        """当点提示类型改变时调用"""
-        is_foreground = button.text().startswith("前景")
-        self.original_view.set_foreground_point(is_foreground)
-            
-    def on_box_mode_clicked(self):
-        """当框选模式按钮点击时调用"""
-        is_checked = self.box_mode_btn.isChecked()
-        self.original_view.set_box_mode(is_checked)
+            QMessageBox.critical(self, "错误", f"无法加载图像: {str(e)}")
+            traceback.print_exc()
         
-        # 更新UI状态
-        if is_checked:
-            self.box_mode_btn.setText("点击模式 👆")
-            self.fg_radio.setEnabled(False)
-            self.bg_radio.setEnabled(False)
-        else:
-            self.box_mode_btn.setText("框选模式 📦")
-            self.fg_radio.setEnabled(True)
-            self.bg_radio.setEnabled(True)
-    
-    def on_model_changed(self, index):
-        """当模型选择改变时调用"""
-        selected_text = self.model_selector.currentText()
-        model_name = selected_text.split(':')[0]
-        
-        # 如果选择的是MedSAM模型，显示点提示控件
-        self.prompt_controls_widget.setVisible(model_name == 'medsam')
-        
-        # 清除当前的点提示和框
-        self.clear_points()
-        self.clear_box()
-    
     def on_point_added(self, x, y, label):
         """当添加一个点时调用"""
         # 存储点和标签
@@ -535,228 +809,175 @@ class MedicalImageApp(QMainWindow):
         self.clear_points_btn.setEnabled(True)
         
     def on_box_drawn(self, box):
-        """当绘制一个框时调用"""
-        # 将新框添加到框列表中
+        """处理框选事件"""
         self.boxes.append(box)
         
-        # 更新UI状态
+        # 使用当前颜色索引绘制框
+        current_color_idx = self.original_view.current_color_idx
+        color = self.original_view.draw_saved_box(box, current_color_idx)
+        self.box_colors.append(color)
+        
+        # 准备下一个框的颜色索引
+        next_color_idx = (current_color_idx + 1) % len(self.original_view.box_colors)
+        self.original_view.set_current_color_index(next_color_idx)
+        
+        # 启用清除按钮
         self.clear_box_btn.setEnabled(True)
         self.clear_last_box_btn.setEnabled(True)
-        
-        # 绘制所有框（包括新框）
-        self.original_view.draw_all_boxes(self.boxes)
-        
-        # 不再显示弹窗
-        # QMessageBox.information(self, "提示", f"已添加框 #{len(self.boxes)}")
-        
-    def clear_last_box(self):
-        """清除最后添加的框提示"""
-        if self.boxes:
-            self.boxes.pop()  # 移除最后一个框
-            
-            # 如果没有框了，禁用按钮
-            if not self.boxes:
-                self.clear_box_btn.setEnabled(False)
-                self.clear_last_box_btn.setEnabled(False)
-            
-            # 重新绘制剩余的框
-            self.original_view.draw_all_boxes(self.boxes)
-        
+    
     def clear_box(self):
-        """清除所有框提示"""
+        """清除所有框"""
         self.boxes = []
+        self.box_colors = []
+        self.box_masks = []
         self.original_view.clear_box()
+        
+        # 更新按钮状态
         self.clear_box_btn.setEnabled(False)
         self.clear_last_box_btn.setEnabled(False)
         
-    def update_slice(self, slice_index):
-        """更新3D图像的当前切片"""
-        if not self.processor.is_3d:
+        # 更新显示
+        self.update_display()
+    
+    def clear_last_box(self):
+        """清除最后一个框"""
+        if not self.boxes:
             return
             
-        self.current_slice = slice_index
+        # 移除最后一个框
+        self.boxes.pop()
+        if self.box_colors:
+            self.box_colors.pop()
+        if self.box_masks:
+            self.box_masks.pop()
         
-        # 显示当前切片
-        self.original_view.display_image(self.processor.image_data[slice_index])
-        
-        # 如果有分割结果，也更新结果显示
-        if self.mask is not None:
-            self.display_result()
+        # 清除所有框，然后重新绘制剩余的框
+        self.original_view.clear_box()
+        for i, box in enumerate(self.boxes):
+            self.original_view.draw_saved_box(box, i)
             
-    def clear_points(self):
-        """清除所有点提示"""
-        self.points = []
-        self.point_labels = []
-        self.original_view.clear_points()
-        self.clear_points_btn.setEnabled(False)
+        # 更新按钮状态
+        self.clear_box_btn.setEnabled(bool(self.boxes))
+        self.clear_last_box_btn.setEnabled(bool(self.boxes))
         
+        # 更新显示
+        self.update_display()
+    
     def segment_image(self):
-        """对当前图像进行分割"""
-        # 获取所选模型
-        selected_text = self.model_selector.currentText()
-        model_name = selected_text.split(':')[0]
+        """使用MedSAM模型分割图像"""
+        # 获取当前选择的模型
+        selected_model = self.model_selector.currentText().split(':')[0]
         
-        try:
-            # 设置分割模型
-            if model_name == 'medsam':
-                # 检查是否有点提示或框提示
-                if not self.points and not self.boxes:
-                    QMessageBox.warning(self, "提示", "请在图像上添加提示点或绘制框")
-                    return
+        if selected_model != 'medsam':
+            QMessageBox.warning(self, "提示", "请选择MedSAM模型进行点提示分割")
+            return
+            
+        # 检查是否有图像
+        if not hasattr(self, 'processor') or self.processor.image_data is None:
+            QMessageBox.warning(self, "提示", "请先加载图像")
+            return
+            
+        # 设置模型
+        self.processor.set_segmentation_model(
+            model_name='medsam',
+            checkpoint_path=self.available_models['medsam']['weights_path']
+        )
+        
+        # 准备点提示和框提示
+        points_array = np.array(self.points) if self.points else None
+        labels_array = np.array(self.point_labels) if self.point_labels else None
+        boxes_array = np.array(self.boxes) if self.boxes else None
+        
+        # 创建掩码存储
+        if self.processor.is_3d:
+            if self.mask is None:
+                self.mask = np.zeros_like(self.processor.image_data, dtype=bool)
+            
+            # 根据当前视图进行分割
+            if self.current_view == 'axial':
+                slice_img = self.processor.image_data[self.axial_slice]
                 
-                # 设置模型
-                self.processor.set_segmentation_model(
-                    model_name='medsam',
-                    model_type='vit_b',
-                    checkpoint_path=self.available_models['medsam']['weights_path']
-                )
+                # 清空当前切片的框掩码
+                self.box_masks = []
                 
-                # 准备模型输入
-                points_array = np.array(self.points) if self.points else None
-                labels_array = np.array(self.point_labels) if self.point_labels else None
-                
-                # 将框列表转换为numpy数组
-                boxes_array = np.array(self.boxes) if self.boxes else None
-                
-                print(f"使用以下提示进行分割: 点={self.points}, 标签={self.point_labels}, 框数量={len(self.boxes) if self.boxes else 0}")
-                
-                # 分割图像
-                if self.processor.is_3d:
-                    # 对当前切片进行分割
-                    slice_img = self.processor.image_data[self.current_slice]
-                    self.mask = np.zeros_like(self.processor.image_data, dtype=bool)
-                    
-                    # 针对每个框分别进行分割，然后合并结果
-                    if boxes_array is not None and len(boxes_array) > 0:
-                        combined_mask = None
-                        for box in boxes_array:
-                            slice_mask = self.processor.segmenter.segment(
-                                slice_img, 
-                                points=points_array, 
-                                point_labels=labels_array,
-                                box=box
-                            )
-                            if combined_mask is None:
-                                combined_mask = slice_mask
-                            else:
-                                combined_mask = np.logical_or(combined_mask, slice_mask)
-                        self.mask[self.current_slice] = combined_mask
-                    else:
-                        # 只使用点提示
+                # 为每个框单独生成掩码
+                if boxes_array is not None and len(boxes_array) > 0:
+                    combined_mask = np.zeros_like(slice_img, dtype=bool)
+                    for i, box in enumerate(boxes_array):
                         slice_mask = self.processor.segmenter.segment(
                             slice_img, 
                             points=points_array, 
                             point_labels=labels_array,
-                            box=None
+                            box=box
                         )
-                        self.mask[self.current_slice] = slice_mask
+                        self.box_masks.append(slice_mask)
+                        combined_mask = np.logical_or(combined_mask, slice_mask)
+                    
+                    # 将合并掩码放回3D掩码中
+                    self.mask[self.axial_slice] = combined_mask
                 else:
-                    # 对2D图像进行分割
-                    if boxes_array is not None and len(boxes_array) > 0:
-                        combined_mask = None
-                        for box in boxes_array:
-                            mask = self.processor.segmenter.segment(
-                                self.processor.image_data,
-                                points=points_array,
-                                point_labels=labels_array,
-                                box=box
-                            )
-                            if combined_mask is None:
-                                combined_mask = mask
-                            else:
-                                combined_mask = np.logical_or(combined_mask, mask)
-                        self.mask = combined_mask
-                    else:
-                        # 只使用点提示
-                        self.mask = self.processor.segmenter.segment(
-                            self.processor.image_data,
-                            points=points_array,
-                            point_labels=labels_array,
-                            box=None
-                        )
+                    # 只使用点提示
+                    slice_mask = self.processor.segmenter.segment(
+                        slice_img, 
+                        points=points_array, 
+                        point_labels=labels_array,
+                        box=None
+                    )
+                    self.mask[self.axial_slice] = slice_mask
+                    self.box_masks = [slice_mask]  # 单个掩码
             
-            elif model_name.startswith('deeplabv3'):
-                # 设置模型
-                self.processor.set_segmentation_model(
-                    model_name=model_name,
-                    num_classes=21,
-                    checkpoint_path=self.available_models[model_name]['weights_path']
-                )
-                
-                # 分割图像
-                self.mask = self.processor.segment_image(target_class=1)
-            
-            # 显示分割结果
-            if self.mask is not None:
-                self.display_result()
-                self.save_btn.setEnabled(True)
-            
-        except Exception as e:
-            import traceback
-            traceback.print_exc()  # 打印完整错误堆栈
-            QMessageBox.critical(self, "错误", f"分割过程中出错: {str(e)}")
-            
-    def display_result(self):
-        """显示分割结果"""
-        self.result_ax.clear()
-        
-        if self.processor.is_3d:
-            # 显示原图
-            if len(self.processor.image_data[self.current_slice].shape) == 3:
-                self.result_ax.imshow(self.processor.image_data[self.current_slice])
-            else:
-                self.result_ax.imshow(self.processor.image_data[self.current_slice], cmap='gray')
-                
-            # 叠加分割掩码
-            mask_slice = self.mask[self.current_slice] if self.mask is not None else None
-            if mask_slice is not None:
-                # 创建带轮廓的遮罩显示
-                from skimage import measure
-                contours = measure.find_contours(mask_slice, 0.5)
-                for contour in contours:
-                    self.result_ax.plot(contour[:, 1], contour[:, 0], 'y-', linewidth=2)
-                
-                self.result_ax.imshow(mask_slice, alpha=0.3, cmap='viridis')
-            self.result_ax.set_title(f'分割结果 (切片 {self.current_slice})')
+            # ... (类似处理其他视图)
+                    
         else:
-            # 显示原图
-            if len(self.processor.image_data.shape) == 3 and self.processor.image_data.shape[2] == 3:
-                self.result_ax.imshow(self.processor.image_data)
+            # 清空框掩码
+            self.box_masks = []
+            
+            # 对2D图像进行分割
+            if boxes_array is not None and len(boxes_array) > 0:
+                combined_mask = np.zeros_like(self.processor.image_data, dtype=bool)
+                for i, box in enumerate(boxes_array):
+                    mask = self.processor.segmenter.segment(
+                        self.processor.image_data,
+                        points=points_array,
+                        point_labels=labels_array,
+                        box=box
+                    )
+                    self.box_masks.append(mask)
+                    combined_mask = np.logical_or(combined_mask, mask)
+                self.mask = combined_mask
             else:
-                self.result_ax.imshow(self.processor.image_data, cmap='gray')
-                
-            # 叠加分割掩码
-            if self.mask is not None:
-                # 创建带轮廓的遮罩显示
-                from skimage import measure
-                contours = measure.find_contours(self.mask, 0.5)
-                for contour in contours:
-                    self.result_ax.plot(contour[:, 1], contour[:, 0], 'y-', linewidth=2)
-                
-                self.result_ax.imshow(self.mask, alpha=0.3, cmap='viridis')
-            self.result_ax.set_title('分割结果')
+                # 只使用点提示
+                self.mask = self.processor.segmenter.segment(
+                    self.processor.image_data,
+                    points=points_array,
+                    point_labels=labels_array,
+                    box=None
+                )
+                self.box_masks = [self.mask]  # 单个掩码
         
-        self.result_ax.axis('off')
-        self.result_canvas.draw()
-        
+        # 显示结果
+        self.update_display()
+    
     def save_result(self):
         """保存分割结果"""
         if self.mask is None:
+            QMessageBox.warning(self, "提示", "没有分割结果可保存")
             return
-        
+            
         options = QFileDialog.Options()
-        file_types = "医学图像 (*.mha *.nii *.nii.gz *.tif *.jpg *.png);;所有文件 (*)"
-        file_path, _ = QFileDialog.getSaveFileName(self, "保存分割结果", "", file_types, options=options)
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "保存分割结果", "", "NIFTI文件 (*.nii.gz);;PNG图像 (*.png);;所有文件 (*)", options=options
+        )
         
-        if file_path:
-            try:
-                result = self.processor.save_segmentation_result(self.mask, file_path)
-                if result:
-                    QMessageBox.information(self, "成功", f"分割结果已保存到: {file_path}")
-                else:
-                    QMessageBox.warning(self, "警告", "保存分割结果失败")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"保存分割结果时出错: {str(e)}")
+        if not file_path:
+            return
+            
+        try:
+            # 保存掩码
+            self.processor.save_mask(self.mask, file_path)
+            QMessageBox.information(self, "成功", f"分割结果已保存到 {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存结果失败: {str(e)}")
 
 
 if __name__ == "__main__":
