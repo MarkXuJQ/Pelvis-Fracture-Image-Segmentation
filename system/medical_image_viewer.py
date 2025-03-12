@@ -362,9 +362,9 @@ class MedicalImageApp(QMainWindow):
         
         control_layout.addWidget(model_group)
         
-        # 3. 3D切面选择 (初始隐藏)
-        self.view_group = QGroupBox("切面选择")
-        view_layout = QVBoxLayout(self.view_group)
+        # 3. 3D视图控制 (初始隐藏)
+        self.view_control_group = QGroupBox("3D视图控制")
+        view_control_layout = QVBoxLayout(self.view_control_group)
         
         # 视图类型选择
         view_type_layout = QHBoxLayout()
@@ -374,7 +374,7 @@ class MedicalImageApp(QMainWindow):
         self.view_type_combo.currentIndexChanged.connect(self.on_view_type_changed)
         view_type_layout.addWidget(view_type_label)
         view_type_layout.addWidget(self.view_type_combo)
-        view_layout.addLayout(view_type_layout)
+        view_control_layout.addLayout(view_type_layout)
         
         # 切片滑块
         slice_layout = QVBoxLayout()
@@ -384,12 +384,12 @@ class MedicalImageApp(QMainWindow):
         self.slice_slider.valueChanged.connect(self.update_slice)
         slice_layout.addWidget(self.slice_label)
         slice_layout.addWidget(self.slice_slider)
-        view_layout.addLayout(slice_layout)
+        view_control_layout.addLayout(slice_layout)
         
-        control_layout.addWidget(self.view_group)
-        self.view_group.setVisible(False)  # 初始隐藏
+        control_layout.addWidget(self.view_control_group)
+        self.view_control_group.setVisible(False)  # 初始隐藏
         
-        # 4. 点和框提示工具 (初始隐藏)
+        # 4. 点和框提示工具
         self.prompt_group = QGroupBox("交互提示工具")
         prompt_layout = QVBoxLayout(self.prompt_group)
         
@@ -480,9 +480,9 @@ class MedicalImageApp(QMainWindow):
         # 添加控制面板到主布局
         main_layout.addWidget(control_panel)
         
-        # 创建右侧图像显示区域（改为横向排列）
+        # 创建右侧图像显示区域（横向排列）
         image_display = QWidget()
-        image_layout = QHBoxLayout(image_display)  # 改为横向布局
+        image_layout = QHBoxLayout(image_display)  # 横向布局
         
         # 原始图像显示
         original_group = QGroupBox("原始图像")
@@ -495,24 +495,7 @@ class MedicalImageApp(QMainWindow):
         
         original_layout.addWidget(self.original_view)
         
-        # 3D切片滑块（仅在3D模式显示）
-        slice_control = QWidget()
-        slice_layout = QHBoxLayout(slice_control)
-        
-        self.slice_label = QLabel("切片: 0/0")
-        self.slice_slider = QSlider(Qt.Horizontal)
-        self.slice_slider.setTickPosition(QSlider.TicksBelow)
-        self.slice_slider.valueChanged.connect(self.update_slice)
-        
-        slice_layout.addWidget(self.slice_label)
-        slice_layout.addWidget(self.slice_slider)
-        
-        original_layout.addWidget(slice_control)
-        slice_control.setVisible(False)  # 初始隐藏
-        self.slice_control_widget = slice_control
-        
         # 设置原始图像组的布局
-        original_group.setLayout(original_layout)
         image_layout.addWidget(original_group)
         
         # 分割结果显示
@@ -527,7 +510,6 @@ class MedicalImageApp(QMainWindow):
         result_layout.addWidget(self.result_canvas)
         
         # 设置分割结果组的布局
-        result_group.setLayout(result_layout)
         image_layout.addWidget(result_group)
         
         # 添加图像显示区到主布局
@@ -659,11 +641,13 @@ class MedicalImageApp(QMainWindow):
             if self.current_view == 'axial':
                 img = self.processor.image_data[self.axial_slice]
             elif self.current_view == 'coronal':
-                # 取冠状面(前额面)切片，需要重新组织数据
+                # 取冠状面(前额面)切片，需要重新组织数据并旋转180度
                 img = self.processor.image_data[:, self.coronal_slice, :]
+                img = np.rot90(img, k=2)  # 旋转180度
             elif self.current_view == 'sagittal':
-                # 取矢状面切片，需要重新组织数据
+                # 取矢状面切片，需要重新组织数据并旋转180度
                 img = self.processor.image_data[:, :, self.sagittal_slice]
+                img = np.rot90(img, k=2)  # 旋转180度
             else:
                 return
         else:
@@ -690,9 +674,13 @@ class MedicalImageApp(QMainWindow):
             if self.current_view == 'axial':
                 mask_slice = self.mask[self.axial_slice]
             elif self.current_view == 'coronal':
+                # 获取冠状面掩码并旋转180度
                 mask_slice = self.mask[:, self.coronal_slice, :]
+                mask_slice = np.rot90(mask_slice, k=2)  # 旋转180度
             elif self.current_view == 'sagittal':
+                # 获取矢状面掩码并旋转180度
                 mask_slice = self.mask[:, :, self.sagittal_slice]
+                mask_slice = np.rot90(mask_slice, k=2)  # 旋转180度
             else:
                 return
         else:
@@ -765,8 +753,8 @@ class MedicalImageApp(QMainWindow):
                 # 如果是3D图像，设置切片控制器
                 depth, height, width = self.processor.image_data.shape
                 
-                # 显示3D切面选择面板
-                self.view_group.setVisible(True)
+                # 显示3D视图控制面板
+                self.view_control_group.setVisible(True)
                 
                 # 设置默认为轴状视图，更新滑块
                 self.view_type_combo.setCurrentIndex(0)
@@ -775,15 +763,11 @@ class MedicalImageApp(QMainWindow):
                 self.slice_slider.setValue(0)
                 self.slice_label.setText(f"切片: 0/{depth - 1}")
                 
-                # 显示切片控制器
-                self.slice_control_widget.setVisible(True)
-                
                 # 显示初始切片
                 self.update_display()
             else:
                 # 如果是2D图像，隐藏切片控制器
-                self.view_group.setVisible(False)
-                self.slice_control_widget.setVisible(False)
+                self.view_control_group.setVisible(False)
                 
                 # 显示图像
                 self.original_view.display_image(self.processor.image_data)
@@ -926,8 +910,88 @@ class MedicalImageApp(QMainWindow):
                     self.mask[self.axial_slice] = slice_mask
                     self.box_masks = [slice_mask]  # 单个掩码
             
-            # ... (类似处理其他视图)
+            elif self.current_view == 'coronal':
+                # 分割冠状面
+                slice_img = self.processor.image_data[:, self.coronal_slice, :]
+                slice_img_rotated = np.rot90(slice_img, k=2)  # 旋转后的图像用于显示和分割
+                
+                # 如果有框，分割每个框
+                if boxes_array is not None and len(boxes_array) > 0:
+                    combined_mask = np.zeros_like(slice_img_rotated, dtype=bool)
+                    h, w = slice_img_rotated.shape
                     
+                    for i, box in enumerate(boxes_array):
+                        # 旋转框坐标以匹配旋转后的图像
+                        x1, y1, x2, y2 = box
+                        box_rotated = [
+                            w - x2, h - y2,  # 新的左上角
+                            w - x1, h - y1   # 新的右下角
+                        ]
+                        
+                        slice_mask = self.processor.segmenter.segment(
+                            slice_img_rotated,
+                            points=points_array,
+                            point_labels=labels_array,
+                            box=box_rotated
+                        )
+                        self.box_masks.append(slice_mask)
+                        combined_mask = np.logical_or(combined_mask, slice_mask)
+                    
+                    # 旋转掩码回原始方向后存入3D掩码
+                    combined_mask_original = np.rot90(combined_mask, k=2)
+                    self.mask[:, self.coronal_slice, :] = combined_mask_original
+                else:
+                    # 只使用点提示
+                    slice_mask = self.processor.segmenter.segment(
+                        slice_img_rotated,
+                        points=points_array,
+                        point_labels=labels_array,
+                        box=None
+                    )
+                    self.mask[:, self.coronal_slice, :] = slice_mask
+                    self.box_masks = [slice_mask]  # 单个掩码
+            
+            elif self.current_view == 'sagittal':
+                # 分割矢状面
+                slice_img = self.processor.image_data[:, :, self.sagittal_slice]
+                slice_img_rotated = np.rot90(slice_img, k=2)  # 旋转后的图像用于显示和分割
+                
+                # 如果有框，分割每个框
+                if boxes_array is not None and len(boxes_array) > 0:
+                    combined_mask = np.zeros_like(slice_img_rotated, dtype=bool)
+                    h, w = slice_img_rotated.shape
+                    
+                    for i, box in enumerate(boxes_array):
+                        # 旋转框坐标以匹配旋转后的图像
+                        x1, y1, x2, y2 = box
+                        box_rotated = [
+                            w - x2, h - y2,  # 新的左上角
+                            w - x1, h - y1   # 新的右下角
+                        ]
+                        
+                        slice_mask = self.processor.segmenter.segment(
+                            slice_img_rotated,
+                            points=points_array,
+                            point_labels=labels_array,
+                            box=box_rotated
+                        )
+                        self.box_masks.append(slice_mask)
+                        combined_mask = np.logical_or(combined_mask, slice_mask)
+                    
+                    # 旋转掩码回原始方向后存入3D掩码
+                    combined_mask_original = np.rot90(combined_mask, k=2)
+                    self.mask[:, :, self.sagittal_slice] = combined_mask_original
+                else:
+                    # 只使用点提示
+                    slice_mask = self.processor.segmenter.segment(
+                        slice_img_rotated,
+                        points=points_array,
+                        point_labels=labels_array,
+                        box=None
+                    )
+                    self.mask[:, :, self.sagittal_slice] = slice_mask
+                    self.box_masks = [slice_mask]  # 单个掩码
+            
         else:
             # 清空框掩码
             self.box_masks = []
