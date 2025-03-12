@@ -64,11 +64,16 @@ class InteractiveCanvas(FigureCanvas):
         self.points = []  # 存储 (x, y, label) 三元组
         self.current_image = None
         
+        # 添加存储已绘制框的列表
+        self.box_rects = []  # 存储已绘制的所有框
+        self.box_colors = ['red', 'blue', 'green', 'purple', 'orange', 'cyan', 'magenta', 'yellow']
+        
     def display_image(self, img):
         """显示图像"""
         self.axes.clear()
         self.points = []
         self.points_plotted = []
+        self.box_rects = []  # 清除已绘制的框
         self.current_image = img
         
         if len(img.shape) == 3:  # 彩色图像
@@ -120,6 +125,12 @@ class InteractiveCanvas(FigureCanvas):
         if self.end_marker and self.end_marker in self.axes.patches:
             self.end_marker.remove()
             self.end_marker = None
+            
+        # 清除所有已绘制的框
+        for rect in self.box_rects:
+            if rect in self.axes.patches:
+                rect.remove()
+        self.box_rects = []
             
         self.drawing_box = False
         self.start_x = None
@@ -228,6 +239,41 @@ class InteractiveCanvas(FigureCanvas):
         
         # 发送信号
         self.boxDrawn.emit([x1, y1, x2, y2])
+        
+    def draw_saved_box(self, box, color_idx=0):
+        """绘制保存的框"""
+        x1, y1, x2, y2 = box
+        x = min(x1, x2)
+        y = min(y1, y2)
+        width = abs(x2 - x1)
+        height = abs(y2 - y1)
+        
+        # 选择颜色
+        color = self.box_colors[color_idx % len(self.box_colors)]
+        
+        # 绘制框
+        rect = mpatches.Rectangle(
+            (x, y), width, height,
+            linewidth=2,
+            edgecolor=color,
+            facecolor='none',
+            alpha=0.7
+        )
+        self.axes.add_patch(rect)
+        self.box_rects.append(rect)
+        self.draw_idle()
+        
+    def draw_all_boxes(self, boxes):
+        """绘制所有保存的框"""
+        # 先清除之前的框
+        for rect in self.box_rects:
+            if rect in self.axes.patches:
+                rect.remove()
+        self.box_rects = []
+        
+        # 绘制所有框
+        for i, box in enumerate(boxes):
+            self.draw_saved_box(box, i)
 
 
 class MedicalImageApp(QMainWindow):
@@ -244,7 +290,7 @@ class MedicalImageApp(QMainWindow):
         self.mask = None
         self.points = []  # 点提示列表 [(x1, y1, label1), (x2, y2, label2), ...]
         self.point_labels = []  # 点标签列表 [label1, label2, ...]
-        self.box = None  # 框提示 [x1, y1, x2, y2]
+        self.boxes = []  # 框提示列表 [[x1, y1, x2, y2], [x1, y1, x2, y2], ...]
         self.current_slice = 0  # 当前3D图像切片
         
         # 初始化UI
@@ -343,8 +389,14 @@ class MedicalImageApp(QMainWindow):
         self.clear_points_btn.setEnabled(False)
         prompt_controls_layout.addWidget(self.clear_points_btn)
         
-        # 清除框按钮
-        self.clear_box_btn = QPushButton("清除框")
+        # 清除最后一个框按钮
+        self.clear_last_box_btn = QPushButton("清除最后框")
+        self.clear_last_box_btn.clicked.connect(self.clear_last_box)
+        self.clear_last_box_btn.setEnabled(False)
+        prompt_controls_layout.addWidget(self.clear_last_box_btn)
+        
+        # 清除所有框按钮
+        self.clear_box_btn = QPushButton("清除所有框")
         self.clear_box_btn.clicked.connect(self.clear_box)
         self.clear_box_btn.setEnabled(False)
         prompt_controls_layout.addWidget(self.clear_box_btn)
@@ -414,7 +466,7 @@ class MedicalImageApp(QMainWindow):
             self.mask = None
             self.points = []
             self.point_labels = []
-            self.box = None
+            self.boxes = []  # 修改为清空框列表
             self.clear_points_btn.setEnabled(False)
             self.clear_box_btn.setEnabled(False)
             self.save_btn.setEnabled(False)
@@ -484,11 +536,38 @@ class MedicalImageApp(QMainWindow):
         
     def on_box_drawn(self, box):
         """当绘制一个框时调用"""
-        # 存储框坐标
-        self.box = box
+        # 将新框添加到框列表中
+        self.boxes.append(box)
         
         # 更新UI状态
         self.clear_box_btn.setEnabled(True)
+        self.clear_last_box_btn.setEnabled(True)
+        
+        # 绘制所有框（包括新框）
+        self.original_view.draw_all_boxes(self.boxes)
+        
+        # 不再显示弹窗
+        # QMessageBox.information(self, "提示", f"已添加框 #{len(self.boxes)}")
+        
+    def clear_last_box(self):
+        """清除最后添加的框提示"""
+        if self.boxes:
+            self.boxes.pop()  # 移除最后一个框
+            
+            # 如果没有框了，禁用按钮
+            if not self.boxes:
+                self.clear_box_btn.setEnabled(False)
+                self.clear_last_box_btn.setEnabled(False)
+            
+            # 重新绘制剩余的框
+            self.original_view.draw_all_boxes(self.boxes)
+        
+    def clear_box(self):
+        """清除所有框提示"""
+        self.boxes = []
+        self.original_view.clear_box()
+        self.clear_box_btn.setEnabled(False)
+        self.clear_last_box_btn.setEnabled(False)
         
     def update_slice(self, slice_index):
         """更新3D图像的当前切片"""
@@ -511,12 +590,6 @@ class MedicalImageApp(QMainWindow):
         self.original_view.clear_points()
         self.clear_points_btn.setEnabled(False)
         
-    def clear_box(self):
-        """清除框提示"""
-        self.box = None
-        self.original_view.clear_box()
-        self.clear_box_btn.setEnabled(False)
-        
     def segment_image(self):
         """对当前图像进行分割"""
         # 获取所选模型
@@ -527,7 +600,7 @@ class MedicalImageApp(QMainWindow):
             # 设置分割模型
             if model_name == 'medsam':
                 # 检查是否有点提示或框提示
-                if not self.points and self.box is None:
+                if not self.points and not self.boxes:
                     QMessageBox.warning(self, "提示", "请在图像上添加提示点或绘制框")
                     return
                 
@@ -541,31 +614,67 @@ class MedicalImageApp(QMainWindow):
                 # 准备模型输入
                 points_array = np.array(self.points) if self.points else None
                 labels_array = np.array(self.point_labels) if self.point_labels else None
-                box_array = np.array(self.box) if self.box else None
                 
-                print(f"使用以下提示进行分割: 点={self.points}, 标签={self.point_labels}, 框={self.box}")
+                # 将框列表转换为numpy数组
+                boxes_array = np.array(self.boxes) if self.boxes else None
+                
+                print(f"使用以下提示进行分割: 点={self.points}, 标签={self.point_labels}, 框数量={len(self.boxes) if self.boxes else 0}")
                 
                 # 分割图像
                 if self.processor.is_3d:
                     # 对当前切片进行分割
                     slice_img = self.processor.image_data[self.current_slice]
                     self.mask = np.zeros_like(self.processor.image_data, dtype=bool)
-                    slice_mask = self.processor.segmenter.segment(
-                        slice_img, 
-                        points=points_array, 
-                        point_labels=labels_array,
-                        box=box_array
-                    )
-                    self.mask[self.current_slice] = slice_mask
+                    
+                    # 针对每个框分别进行分割，然后合并结果
+                    if boxes_array is not None and len(boxes_array) > 0:
+                        combined_mask = None
+                        for box in boxes_array:
+                            slice_mask = self.processor.segmenter.segment(
+                                slice_img, 
+                                points=points_array, 
+                                point_labels=labels_array,
+                                box=box
+                            )
+                            if combined_mask is None:
+                                combined_mask = slice_mask
+                            else:
+                                combined_mask = np.logical_or(combined_mask, slice_mask)
+                        self.mask[self.current_slice] = combined_mask
+                    else:
+                        # 只使用点提示
+                        slice_mask = self.processor.segmenter.segment(
+                            slice_img, 
+                            points=points_array, 
+                            point_labels=labels_array,
+                            box=None
+                        )
+                        self.mask[self.current_slice] = slice_mask
                 else:
                     # 对2D图像进行分割
-                    self.mask = self.processor.segmenter.segment(
-                        self.processor.image_data,
-                        points=points_array,
-                        point_labels=labels_array,
-                        box=box_array
-                    )
-                
+                    if boxes_array is not None and len(boxes_array) > 0:
+                        combined_mask = None
+                        for box in boxes_array:
+                            mask = self.processor.segmenter.segment(
+                                self.processor.image_data,
+                                points=points_array,
+                                point_labels=labels_array,
+                                box=box
+                            )
+                            if combined_mask is None:
+                                combined_mask = mask
+                            else:
+                                combined_mask = np.logical_or(combined_mask, mask)
+                        self.mask = combined_mask
+                    else:
+                        # 只使用点提示
+                        self.mask = self.processor.segmenter.segment(
+                            self.processor.image_data,
+                            points=points_array,
+                            point_labels=labels_array,
+                            box=None
+                        )
+            
             elif model_name.startswith('deeplabv3'):
                 # 设置模型
                 self.processor.set_segmentation_model(

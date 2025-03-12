@@ -7,6 +7,8 @@ import torch
 from typing import Union, Tuple, Optional, List
 import cv2
 import sys
+from skimage import transform
+import torch.nn.functional as F
 
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -359,6 +361,129 @@ class MedicalImageProcessor:
         except Exception as e:
             print(f"保存分割结果时出错: {str(e)}")
             return False
+    
+    def setup_medsam_model(self, model_type='vit_b', checkpoint_path=None):
+        """设置MedSAM模型"""
+        try:
+            print(f"加载MedSAM模型 ({model_type})从: {checkpoint_path}")
+            from segment_anything import sam_model_registry
+            
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            self.medsam_model = sam_model_registry[model_type](checkpoint=checkpoint_path)
+            self.medsam_model.to(device)
+            self.medsam_model.eval()
+            self.device = device
+            print(f"MedSAM模型已加载到设备: {device}")
+            return True
+        except Exception as e:
+            print(f"加载MedSAM模型时发生错误: {str(e)}")
+            return False
+            
+    def compute_image_embedding(self, image):
+        """计算图像的嵌入表示"""
+        if not hasattr(self, 'medsam_model'):
+            raise ValueError("需要先设置MedSAM模型")
+            
+        # 确保图像是适当的类型和范围
+        if image.max() > 1.0:
+            image = image.astype(np.float32) / 255.0
+            
+        # 转换为3通道图像
+        if len(image.shape) == 2:
+            image = np.repeat(image[:, :, np.newaxis], 3, axis=2)
+        elif len(image.shape) == 3 and image.shape[2] == 1:
+            image = np.repeat(image, 3, axis=2)
+            
+        # 调整大小到1024x1024（MedSAM的输入尺寸）
+        img_1024 = transform.resize(
+            image, (1024, 1024), order=3, preserve_range=True, anti_aliasing=True
+        )
+        
+        # 标准化
+        img_1024 = (img_1024 - img_1024.min()) / np.clip(
+            img_1024.max() - img_1024.min(), a_min=1e-8, a_max=None
+        )  # normalize to [0, 1]
+        
+        # 转换为PyTorch张量
+        img_1024_tensor = torch.tensor(img_1024).float().permute(2, 0, 1).unsqueeze(0)
+        img_1024_tensor = img_1024_tensor.to(self.device)
+        
+        # 计算嵌入
+        with torch.no_grad():
+            self.image_embedding = self.medsam_model.image_encoder(img_1024_tensor)
+            
+        print(f"图像嵌入计算完成，形状: {self.image_embedding.shape}")
+        return True
+        
+    def segment_with_medsam(self, image, points=None, point_labels=None, box=None):
+        """使用MedSAM进行分割"""
+        if not hasattr(self, 'medsam_model'):
+            raise ValueError("需要先设置MedSAM模型")
+            
+        if not hasattr(self, 'image_embedding'):
+            print("计算图像嵌入...")
+            self.compute_image_embedding(image)
+        
+        H, W = image.shape[:2]
+        
+        # 处理框提示（如果有）
+        if box is not None:
+            # 将框坐标调整为1024x1024比例
+            box_1024 = np.array(box) / np.array([W, H, W, H]) * 1024
+            box_torch = torch.as_tensor(box_1024, dtype=torch.float, device=self.device)
+            if len(box_torch.shape) == 1:
+                box_torch = box_torch.unsqueeze(0)  # 添加批次维度
+        else:
+            box_torch = None
+            
+        # 处理点提示（如果有）
+        if points is not None and point_labels is not None:
+            # 将点坐标调整为1024x1024比例
+            points_1024 = np.array(points) / np.array([W, H]) * 1024
+            points_torch = torch.as_tensor(points_1024, dtype=torch.float, device=self.device)
+            if len(points_torch.shape) == 2:
+                points_torch = points_torch.unsqueeze(0)  # 添加批次维度
+                
+            point_labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=self.device)
+            if len(point_labels_torch.shape) == 1:
+                point_labels_torch = point_labels_torch.unsqueeze(0)  # 添加批次维度
+        else:
+            points_torch = None
+            point_labels_torch = None
+            
+        print(f"分割提示 - 点: {points}, 标签: {point_labels}, 框: {box}")
+        
+        # 使用提示编码器
+        with torch.no_grad():
+            sparse_embeddings, dense_embeddings = self.medsam_model.prompt_encoder(
+                points=points_torch,
+                boxes=box_torch,
+                masks=None,
+            )
+            
+            # 解码掩码
+            low_res_logits, _ = self.medsam_model.mask_decoder(
+                image_embeddings=self.image_embedding,
+                image_pe=self.medsam_model.prompt_encoder.get_dense_pe(),
+                sparse_prompt_embeddings=sparse_embeddings,
+                dense_prompt_embeddings=dense_embeddings,
+                multimask_output=False,
+            )
+            
+            # 将低分辨率掩码调整到原始图像大小
+            low_res_pred = torch.sigmoid(low_res_logits)
+            low_res_pred = F.interpolate(
+                low_res_pred,
+                size=(H, W),
+                mode="bilinear",
+                align_corners=False,
+            )
+            
+            # 转换为numpy掩码
+            mask = low_res_pred.squeeze().cpu().numpy()
+            mask = (mask > 0.5).astype(np.uint8)
+            
+        return mask
 
 
 def list_available_models() -> dict:
