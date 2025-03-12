@@ -55,7 +55,6 @@ def handle_message(data):
     finally:
         cursor.close()
         connection.close()
-    print('Received message:', data)
     # 返回消息给客户端
     emit('receive_message', data, broadcast=True)
 
@@ -111,7 +110,6 @@ def get_chat_history(data):
     finally:
         cursor.close()
         connection.close()
-    print('Requesting chat history:', data)
     # 执行获取聊天记录的操作并返回
     emit('chat_history', {'history': []})
 
@@ -138,7 +136,6 @@ def get_all_patients():
 
 @socketio.on('get_task_list')
 def get_task_list(data):
-    print("Fetching task list...")
     assigned_doctor_id = data['assigned_doctor_id']
     try:
         connection = get_connection()
@@ -152,7 +149,6 @@ def get_task_list(data):
 
         # 返回任务列表给客户端
         task_list_data = [{'task_id': row[0], 'task_title': row[1]} for row in tasks]
-        print(f"Sending task list: {task_list_data}")
         emit('task_list', {'tasks': task_list_data}, broadcast=False)
 
     except pymysql.MySQLError as e:
@@ -164,8 +160,6 @@ def get_task_list(data):
 @socketio.on('delete_task')
 def delete_task(data):
     task_id = data['task_id']
-    print(f"Deleting task with ID: {task_id}")
-
     try:
         connection = get_connection()
         cursor = connection.cursor()
@@ -180,7 +174,6 @@ def delete_task(data):
 
         # 向客户端确认删除成功
         emit('task_deleted', {'task_id': task_id}, broadcast=False)
-        print(f"Task with ID {task_id} has been deleted.")
 
     except pymysql.MySQLError as e:
         logging.error(f"Error deleting task: {e}")
@@ -188,37 +181,6 @@ def delete_task(data):
     finally:
         cursor.close()
         connection.close()
-
-'''@socketio.on('update_task_title')
-def update_task_title(data):
-    task_id = data['task_id']
-    new_task_title = data['new_task_title']
-    print(f"Updating task ID {task_id} with new title: {new_task_title}")
-
-    try:
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        # 执行 SQL 语句更新任务标题
-        cursor.execute("""
-            UPDATE tasks
-            SET task_title = %s
-            WHERE task_id = %s
-        """, (new_task_title, task_id))
-
-        connection.commit()
-
-        # 向客户端确认更新成功
-        emit('task_title_updated', {'task_id': task_id, 'new_task_title': new_task_title}, broadcast=False)
-        print(f"Task ID {task_id} title updated to: {new_task_title}")
-
-    except pymysql.MySQLError as e:
-        logging.error(f"Error updating task title: {e}")
-        emit('task_title_updated', {'task_id': None, 'error': str(e)}, broadcast=False)
-    finally:
-        cursor.close()
-        connection.close()
-'''
 
 @socketio.on('update_task_title')
 def update_task_title(data):
@@ -235,7 +197,6 @@ def update_task_title(data):
         existing_count = cursor.fetchone()[0]
 
         if existing_count > 0:
-            print(f"❌ 任务标题 '{new_task_title}' 已存在，更新失败")
             emit('task_title_updated', {
                 'task_id': None,
                 'error': '任务已存在，你可以在 \'add task\' 里输入该标题并选择是否加入该任务'
@@ -251,7 +212,6 @@ def update_task_title(data):
         result = cursor.fetchone()
 
         if not result:
-            print(f"❌ 任务 ID {task_id} 不存在")
             emit('task_title_updated', {'task_id': None, 'error': 'Task not found'}, broadcast=False)
             return
 
@@ -275,7 +235,6 @@ def update_task_title(data):
         }, broadcast=True)
 
     except pymysql.IntegrityError:
-        print(f"❌ 任务标题 '{new_task_title}' 已存在，更新失败")
         emit('task_title_updated', {
             'task_id': None, 'error': 'Task title already exists'
         }, broadcast=False)
@@ -323,7 +282,6 @@ def update_task_details(data):
     finally:
         cursor.close()
         connection.close()
-
 
 @socketio.on('create_task')
 def create_task(data):
@@ -390,6 +348,82 @@ def create_task(data):
         cursor.close()
         connection.close()
 
+@socketio.on('get_task_notes')
+def get_task_notes(data):
+    """获取任务相关的所有医生笔记，并返回医生名字"""
+    task_id = data.get('task_id')
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT doctor_id, note_id, content, created_at 
+            FROM task_notes
+            WHERE task_id = %s
+            ORDER BY created_at DESC
+        """, (task_id,))
+        notes = cursor.fetchall()
+        doctor_ids = list(set(row[0] for row in notes))
+        doctor_names = {}
+        if doctor_ids:
+            format_strings = ",".join(["%s"] * len(doctor_ids))
+            cursor.execute(f"SELECT doctor_id, doctor_name FROM doctors WHERE doctor_id IN ({format_strings})", doctor_ids)
+            doctor_results = cursor.fetchall()
+            doctor_names = {row[0]: row[1] for row in doctor_results}
+        # 按医生分类整理笔记
+        notes_by_doctor = {}
+        for row in notes:
+            doctor_id, note_id, content, created_at = row
+            doctor_name = doctor_names.get(doctor_id, "未知医生")
+            if doctor_id not in notes_by_doctor:
+                notes_by_doctor[doctor_id] = {
+                    "doctor_name": doctor_name,
+                    "notes": []
+                }
+            notes_by_doctor[doctor_id]["notes"].append({
+                "note_id": note_id,
+                "content": content,
+                "created_at": created_at.strftime('%Y-%m-%d %H:%M:%S')
+            })
+        # **发送数据给客户端**
+        emit('task_notes', {'task_id': task_id, 'notes_by_doctor': notes_by_doctor}, broadcast=False)
+    except pymysql.MySQLError as e:
+        logging.error(f"❌ Error fetching task notes: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
+@socketio.on('get_doctor_notes')
+def get_doctor_notes(data):
+    """获取某个医生的所有笔记"""
+    task_id = data.get("task_id")
+    doctor_id = data.get("doctor_id")
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        # 获取医生的所有笔记
+        cursor.execute("""
+            SELECT note_id, content, created_at 
+            FROM task_notes
+            WHERE task_id = %s AND doctor_id = %s
+            ORDER BY created_at DESC
+        """, (task_id, doctor_id))
+        notes = cursor.fetchall()
+        notes_data = [
+            {
+                "note_id": row[0],
+                "content": row[1],
+                "created_at": row[2].strftime('%Y-%m-%d %H:%M:%S')
+            }
+            for row in notes
+        ]
+        emit("doctor_notes", {"doctor_id": doctor_id, "notes": notes_data}, broadcast=False)
+    except pymysql.MySQLError as e:
+        logging.error(f"❌ Error fetching doctor notes: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
 def insert_new_task(cursor, task_title, task_description, due_date, status, doctor_id, patient_id):
     """ 插入新任务，并返回 task_id """
     query = """
@@ -436,7 +470,7 @@ def confirm_join_task(response):
 
     except pymysql.MySQLError as e:
         connection.rollback()
-        logging.error(f"❌ 医生加入任务失败: {e}")
+        logging.error(f"医生加入任务失败: {e}")
         emit('task_creation_failed', {'error': str(e)}, broadcast=False)
     finally:
         cursor.close()
@@ -518,6 +552,27 @@ def get_task_details(data):
     except pymysql.MySQLError as e:
         logging.error(f"获取任务列表失败: {e}")
         emit('task_details_failed', {'error': str(e)}, broadcast=False)
+    finally:
+        cursor.close()
+        connection.close()
+@socketio.on('add_task_note')
+def add_task_note(data):
+    """添加新的任务笔记"""
+    task_id = data.get("task_id")
+    doctor_id = data.get("doctor_id")
+    content = data.get("content")
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        cursor.execute("""
+            INSERT INTO task_notes (task_id, doctor_id, content)
+            VALUES (%s, %s, %s)
+        """, (task_id, doctor_id, content))
+        connection.commit()
+        emit("note_add_response", {"status": "success", "message": "笔记添加成功"}, broadcast=False)
+    except pymysql.MySQLError as e:
+        logging.error(f"插入笔记失败: {e}")
+        emit("note_add_response", {"status": "error", "message": "数据库错误，插入失败"})
     finally:
         cursor.close()
         connection.close()

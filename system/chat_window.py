@@ -1,25 +1,19 @@
 import sys
-import json
-import datetime
-from functools import partial
-
-from PyQt5.QtGui import QStandardItemModel, QStandardItem, QFont
 from PyQt5.QtWidgets import (
-    QApplication, QListView, QWidget, QVBoxLayout, QLabel, QPushButton, QMenu, QStyleOptionViewItem,
-    QStyledItemDelegate, QSpacerItem, QSizePolicy, QDateTimeEdit, QComboBox, QFrame, QMessageBox, QDialog
+   QSpacerItem, QSizePolicy, QDateTimeEdit, QComboBox, QMessageBox, QDialog
 )
-from PyQt5.QtCore import Qt, QSize, QDateTime, QTimer, QDate, QTime, QMetaObject
+from PyQt5.QtCore import Qt, QSize, QDateTime, QTimer
 import os
 import socketio
 from PyQt5 import uic
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QLineEdit, QPushButton, QListWidget, QTabWidget, \
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QFileDialog, QHBoxLayout, QLabel, QListWidgetItem, QMenu, \
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QLineEdit, QPushButton, QListWidget,  \
+    QVBoxLayout,  QHBoxLayout, QLabel, QListWidgetItem, QMenu, \
     QAction
 from qasync import QEventLoop
 import asyncio
-from delegate import  TaskItemDelegate
+from delegate import TaskItemDelegate
 from stylesheet import apply_stylesheet
+from system.notedetails import NoteDetailsWidget
 from taskdetails import TaskDetailsWidget
 
 class ChatApp(QMainWindow):
@@ -34,6 +28,7 @@ class ChatApp(QMainWindow):
         self.receiver_name = None
         self.doctors_list = []  # 存储医生列表，避免多次请求导致 UI 冲突
         self.is_listening = True  # 控制是否监听事件
+        self.mark = False
         current_dir = os.path.dirname(os.path.abspath(__file__))
         ui_file = os.path.join(current_dir, "ui", "chat_window.ui")
         uic.loadUi(ui_file, self)
@@ -51,11 +46,11 @@ class ChatApp(QMainWindow):
         layout.setStretchFactor(self.centerWidget, 4)
         layout.setStretchFactor(self.rightWidget, 5)
         # 为布局设置边距
-        layout.setContentsMargins(10, 2, 10, 10)  # 左上右下的间距为10像素
+        layout.setContentsMargins(10, 2, 10, 10)
         # 获取布局
         topLayout = self.findChild(QHBoxLayout, "topLayout")
         # 为布局设置边距
-        topLayout.setContentsMargins(20, 10, 10, 5)  # 左上右下的间距为10像素
+        topLayout.setContentsMargins(20, 10, 10, 5)
 
         # 创建一个新的 QSpacerItem，并手动添加到布局
         horizontalSpacer = QSpacerItem(30, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -79,9 +74,11 @@ class ChatApp(QMainWindow):
         if selected_tab == "消息":
             self.load_doctor_list()
         elif selected_tab == "任务":
+            self.mark = False
             self.load_task_list()
         elif selected_tab == "笔记":
-            self.display_note_page()
+            self.mark = True
+            self.load_task_list()
 
     def load_doctor_list(self):
         self.welcomeLabel.setText("消息")
@@ -170,8 +167,9 @@ class ChatApp(QMainWindow):
         self.task_list = QListWidget(self)
         self.centerLayout.addWidget(self.task_list)
         # Set custom delegate for the task list
-        delegate = TaskItemDelegate(self.task_list,self.sio,self)
-        self.task_list.setItemDelegate(delegate)
+        if not self.mark:
+            delegate = TaskItemDelegate(self.task_list,self.sio,self)
+            self.task_list.setItemDelegate(delegate)
         data = {
             'assigned_doctor_id': self.sender_id
         }
@@ -187,22 +185,28 @@ class ChatApp(QMainWindow):
             list_item = QListWidgetItem(task_title)
             list_item.setData(Qt.UserRole, task_id)  # Store the task ID as custom data
             self.task_list.addItem(list_item)
-        # 创建 "add task" 并设置为固定项
-        add_task_item = QListWidgetItem("add task")
-        add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)  # 禁止选中
-        add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 禁止编辑
-        add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)  # 禁止拖动
-        self.task_list.addItem(add_task_item)  # 确保它在最后
-        if not self.task_list.receivers(self.task_list.itemClicked):
-            self.task_list.itemClicked.connect(self.on_task_clicked)
+        if not self.mark:
+            # 创建 "add task" 并设置为固定项
+            add_task_item = QListWidgetItem("add task")
+            add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)  # 禁止选中
+            add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # 禁止编辑
+            add_task_item.setFlags(add_task_item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)  # 禁止拖动
+            self.task_list.addItem(add_task_item)  # 确保它在最后
+            if not self.task_list.receivers(self.task_list.itemClicked):
+                self.task_list.itemClicked.connect(self.on_task_clicked)
+        else:
+            if not self.task_list.receivers(self.task_list.itemClicked):
+                self.task_list.itemClicked.connect(self.task_note_clicked)
 
     def on_task_clicked(self, item):
         self.clear_right_layout()
         if item.text() == "add task":
-            # 创建任务创建组件，并添加到 rightLayout
             self.task_creation = TaskCreationWidget(self,self.sender_id, self.rightLayout)
         else:
             self.task_details = TaskDetailsWidget(self,item,self.rightLayout)
+    def task_note_clicked(self,item):
+        self.clear_right_layout()
+        self.note_details = NoteDetailsWidget(self, item,self.rightLayout)
 
     def remove_list_widget(self):
         """删除 center_layout 中的 QListWidget 组件"""
@@ -212,36 +216,21 @@ class ChatApp(QMainWindow):
             if widget and isinstance(widget, QListWidget):
                 widget.deleteLater()
 
-    def clear_right_layout(self,*args):
-        """删除 right_layout 中的所有组件，但保留布局本身"""
-        for i in range(self.rightLayout.count()):
+    def clear_right_layout(self, *args):
+        """删除 rightLayout 中的所有组件，确保完全清空"""
+        for i in reversed(range(self.rightLayout.count())):
             item = self.rightLayout.itemAt(i)
+            if item is None:
+                continue
             widget = item.widget()
             if widget:
+                self.rightLayout.removeWidget(widget)
+                widget.setParent(None)
                 widget.deleteLater()
-
-    def add_note(self):
-        note_content = self.note_input.text()
-        note_data = {'note_content': note_content, 'patient_id': self.receiver_id}
-        self.sio.emit('add_note', note_data)
-
-    def display_note_page(self):
-        """显示笔记页面"""
-        self.welcomeLabel.setText("笔记管理")
-        self.clear_right_layout()
-        
-        # 创建笔记输入区域
-        self.note_input = QTextEdit(self)
-        self.note_input.setPlaceholderText("在这里输入笔记...")
-        
-        # 创建保存按钮
-        save_button = QPushButton("保存笔记", self)
-        save_button.clicked.connect(self.add_note)
-        
-        # 添加到布局
-        self.rightLayout.addWidget(self.note_input)
-        self.rightLayout.addWidget(save_button)
-
+            else:
+                self.rightLayout.removeItem(item)
+        # **强制更新 UI**
+        self.rightLayout.update()
 
 class TaskCreationWidget:
     def __init__(self, chat_app,user_id, rightLayout):
