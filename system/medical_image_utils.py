@@ -7,6 +7,8 @@ import torch
 from typing import Union, Tuple, Optional, List
 import cv2
 import sys
+import vtk
+from vtk.util import numpy_support
 
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -97,33 +99,169 @@ class MedicalImageProcessor:
         self.image_data = np.array(pil_image)
         self.is_3d = False
         
+        # 检查是否为X光图像（基于文件扩展名）
+        file_ext = os.path.splitext(image_path)[1].lower()
+        if file_ext in self.SUPPORTED_2D_FORMATS:
+            self._process_xray_if_needed()
+        
         print(f"已加载2D图像: 形状={self.image_data.shape}")
     
-    def display_image(self, slice_index: int = None) -> None:
+    def _process_xray_if_needed(self) -> None:
+        """处理X光图像，应用适当的gamma校正"""
+        # 检测是否为X光图像（基于图像特性）
+        if self._is_likely_xray():
+            print("检测到X光图像，应用gamma校正")
+            # 应用gamma校正（典型X光gamma值约为1.5-2.2）
+            gamma = 1.8
+            self.apply_gamma_correction(gamma)
+    
+    def _is_likely_xray(self) -> bool:
+        """基于图像特性判断是否为X光图像"""
+        # 简单启发式方法：X光图像通常有高对比度、灰度特性
+        if len(self.image_data.shape) == 2 or (len(self.image_data.shape) == 3 and self.image_data.shape[2] == 1):
+            # 灰度图
+            mean_val = np.mean(self.image_data)
+            std_val = np.std(self.image_data)
+            # X光通常有中等平均亮度和较高对比度
+            return 30 < mean_val < 200 and std_val > 40
+        elif len(self.image_data.shape) == 3:
+            # 检查RGB图像是否近似灰度（如果是X光的RGB表示）
+            r, g, b = self.image_data[:, :, 0], self.image_data[:, :, 1], self.image_data[:, :, 2]
+            if np.abs(np.mean(r-g)) < 5 and np.abs(np.mean(r-b)) < 5 and np.abs(np.mean(g-b)) < 5:
+                return True
+        return False
+    
+    def apply_gamma_correction(self, gamma: float) -> None:
+        """
+        应用gamma校正到图像
+        
+        参数:
+            gamma: gamma校正值，<1为增亮，>1为变暗
+        """
+        # 确保图像数据在0-1范围内
+        if self.image_data.max() > 1.0:
+            img_normalized = self.image_data / 255.0
+        else:
+            img_normalized = self.image_data.copy()
+            
+        # 应用gamma校正
+        corrected = np.power(img_normalized, 1.0/gamma)
+        
+        # 转换回原始范围
+        if self.image_data.max() > 1.0:
+            self.image_data = (corrected * 255.0).astype(self.image_data.dtype)
+        else:
+            self.image_data = corrected
+    
+    def display_image(self, slice_index: int = None, use_vtk: bool = False) -> None:
         """
         显示医学图像
         
         参数:
             slice_index: 3D图像的切片索引，如果为None则显示中间切片
+            use_vtk: 是否使用VTK进行渲染（推荐用于X光图像）
         """
         if self.image_data is None:
             print("错误: 没有加载图像")
             return
         
-        plt.figure(figsize=(10, 8))
-        
+        if use_vtk:
+            self._display_with_vtk(slice_index)
+        else:
+            # 原始matplotlib显示方法
+            plt.figure(figsize=(10, 8))
+            
+            if self.is_3d:
+                if slice_index is None:
+                    slice_index = self.image_data.shape[0] // 2  # 默认显示中间切片
+                
+                plt.imshow(self.image_data[slice_index], cmap='gray')
+                plt.title(f"3D图像切片 #{slice_index}")
+            else:
+                plt.imshow(self.image_data, cmap='gray' if len(self.image_data.shape) == 2 else None)
+                plt.title("2D图像")
+                
+            plt.colorbar()
+            plt.show()
+            
+    def _display_with_vtk(self, slice_index: int = None) -> None:
+        """使用VTK显示图像，更适合X光图像显示"""
         if self.is_3d:
             if slice_index is None:
-                slice_index = self.image_data.shape[0] // 2  # 默认显示中间切片
-            
-            plt.imshow(self.image_data[slice_index], cmap='gray')
-            plt.title(f"3D图像切片 #{slice_index}")
+                slice_index = self.image_data.shape[0] // 2
+            img_data = self.image_data[slice_index].copy()
         else:
-            plt.imshow(self.image_data, cmap='gray' if len(self.image_data.shape) == 2 else None)
-            plt.title("2D图像")
-            
-        plt.colorbar()
-        plt.show()
+            img_data = self.image_data.copy()
+        
+        # 确保图像为灰度图
+        if len(img_data.shape) == 3 and img_data.shape[2] == 3:
+            # 转换RGB为灰度
+            img_data = cv2.cvtColor(img_data, cv2.COLOR_RGB2GRAY)
+        
+        # 确保数据类型正确
+        if img_data.dtype != np.uint8:
+            if img_data.max() <= 1.0:
+                img_data = (img_data * 255).astype(np.uint8)
+            else:
+                img_data = img_data.astype(np.uint8)
+        
+        # 创建VTK图像数据
+        height, width = img_data.shape
+        vtk_image = vtk.vtkImageData()
+        vtk_image.SetDimensions(width, height, 1)
+        vtk_image.AllocateScalars(vtk.VTK_UNSIGNED_CHAR, 1)
+        
+        # 填充VTK图像数据
+        for y in range(height):
+            for x in range(width):
+                vtk_image.SetScalarComponentFromDouble(x, y, 0, 0, img_data[y, x])
+        
+        # 创建颜色映射
+        color_func = vtk.vtkColorTransferFunction()
+        color_func.AddRGBPoint(0, 0.0, 0.0, 0.0)  # 黑色
+        color_func.AddRGBPoint(255, 1.0, 1.0, 1.0)  # 白色
+        
+        # 创建不透明度映射
+        opacity_func = vtk.vtkPiecewiseFunction()
+        opacity_func.AddPoint(0, 0.0)
+        opacity_func.AddPoint(255, 1.0)
+        
+        # 创建图像属性和映射器
+        image_property = vtk.vtkImageProperty()
+        image_property.SetColorWindow(255)
+        image_property.SetColorLevel(127.5)
+        image_property.SetAmbient(1.0)
+        image_property.SetInterpolationTypeToLinear()
+        
+        # 创建图像slice
+        actor = vtk.vtkImageActor()
+        actor.GetMapper().SetInputData(vtk_image)
+        actor.SetProperty(image_property)
+        
+        # 创建渲染器和渲染窗口
+        renderer = vtk.vtkRenderer()
+        renderer.AddActor(actor)
+        renderer.SetBackground(0.1, 0.1, 0.1)
+        
+        render_window = vtk.vtkRenderWindow()
+        render_window.AddRenderer(renderer)
+        render_window.SetSize(800, 600)
+        
+        # 创建交互器
+        interactor = vtk.vtkRenderWindowInteractor()
+        interactor.SetRenderWindow(render_window)
+        
+        # 设置相机
+        camera = renderer.GetActiveCamera()
+        camera.ParallelProjectionOn()
+        camera.SetPosition(width/2, height/2, 100)
+        camera.SetFocalPoint(width/2, height/2, 0)
+        camera.SetParallelScale(height/2)
+        
+        # 初始化并开始
+        interactor.Initialize()
+        render_window.Render()
+        interactor.Start()
     
     def save_mask(self, mask: np.ndarray, file_path: str) -> bool:
         """

@@ -424,6 +424,33 @@ class MedicalImageApp(QMainWindow):
         
         control_layout.addWidget(model_group)
         
+        # 添加Gamma调整控件组（初始隐藏）
+        self.gamma_group = QGroupBox("X光图像增强")
+        gamma_layout = QVBoxLayout(self.gamma_group)
+        
+        # Gamma值滑块
+        gamma_slider_layout = QVBoxLayout()
+        self.gamma_value_label = QLabel("Gamma值: 2.0")
+        self.gamma_slider = QSlider(Qt.Horizontal)
+        self.gamma_slider.setMinimum(40)  # 2.0
+        self.gamma_slider.setMaximum(200)  # 7.0
+        self.gamma_slider.setValue(20)    # 默认2.0
+        self.gamma_slider.setTickPosition(QSlider.TicksBelow)
+        self.gamma_slider.setTickInterval(10)
+        self.gamma_slider.valueChanged.connect(self.on_gamma_changed)
+        
+        gamma_slider_layout.addWidget(self.gamma_value_label)
+        gamma_slider_layout.addWidget(self.gamma_slider)
+        gamma_layout.addLayout(gamma_slider_layout)
+        
+        # 重置按钮
+        self.reset_gamma_btn = QPushButton("重置为推荐值")
+        self.reset_gamma_btn.clicked.connect(self.reset_gamma)
+        gamma_layout.addWidget(self.reset_gamma_btn)
+        
+        control_layout.addWidget(self.gamma_group)
+        self.gamma_group.setVisible(False)  # 初始隐藏
+        
         # 3. 3D视图控制 (初始隐藏)
         self.view_control_group = QGroupBox("3D视图控制")
         view_control_layout = QVBoxLayout(self.view_control_group)
@@ -836,6 +863,9 @@ class MedicalImageApp(QMainWindow):
                 # 显示3D视图控制面板
                 self.view_control_group.setVisible(True)
                 
+                # 隐藏Gamma控制面板
+                self.gamma_group.setVisible(False)
+                
                 # 设置默认为轴状视图，更新滑块
                 self.view_type_combo.setCurrentIndex(0)
                 self.current_view = 'axial'
@@ -846,8 +876,21 @@ class MedicalImageApp(QMainWindow):
                 # 显示初始切片
                 self.update_display()
             else:
-                # 如果是2D图像，隐藏切片控制器
+                # 如果是2D图像，隐藏切片控制器，显示Gamma控制器
                 self.view_control_group.setVisible(False)
+                
+                # 检查是否可能是X光图像
+                is_xray = self._check_if_xray(self.processor.image_data)
+                
+                # 显示Gamma控制面板
+                self.gamma_group.setVisible(True)
+                
+                # 对于X光图像，设置推荐的初始gamma值
+                if is_xray:
+                    self.gamma_slider.setValue(30)  # 3.0
+                else:
+                    self.gamma_slider.setValue(20)  # 2.0
+                self.on_gamma_changed(self.gamma_slider.value())
                 
                 # 显示图像
                 self.original_view.display_image(self.processor.image_data)
@@ -862,6 +905,60 @@ class MedicalImageApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"无法加载图像: {str(e)}")
             traceback.print_exc()
+    
+    def _check_if_xray(self, image):
+        """检查图像是否可能是X光图像"""
+        # 简单启发式方法：检查图像特征
+        if len(image.shape) == 2 or (len(image.shape) == 3 and image.shape[2] == 1):
+            # 灰度图
+            mean_val = np.mean(image)
+            std_val = np.std(image)
+            # X光通常有中等平均亮度和较高对比度
+            return 30 < mean_val < 200 and std_val > 40
+        elif len(image.shape) == 3:
+            # 检查RGB图像是否近似灰度（如果是X光的RGB表示）
+            r, g, b = image[:, :, 0], image[:, :, 1], image[:, :, 2]
+            if np.abs(np.mean(r-g)) < 5 and np.abs(np.mean(r-b)) < 5 and np.abs(np.mean(g-b)) < 5:
+                return True
+        return False
+    
+    def on_gamma_changed(self, value):
+        """处理gamma值滑块变化"""
+        gamma = value / 10.0  # 滑块值转换为gamma值
+        self.gamma_value_label.setText(f"Gamma值: {gamma:.1f}")
+        
+        if hasattr(self, 'processor') and self.processor.image_data is not None and not self.processor.is_3d:
+            # 保存原始图像
+            if not hasattr(self, 'original_image_backup'):
+                self.original_image_backup = self.processor.image_data.copy()
+            else:
+                # 恢复原始图像，然后应用新的gamma
+                self.processor.image_data = self.original_image_backup.copy()
+            
+            # 应用gamma校正
+            self.processor.apply_gamma_correction(gamma)
+            
+            # 更新显示
+            self.original_view.display_image(self.processor.image_data)
+            
+            # 如果有分割结果，也更新分割结果显示
+            if self.mask is not None:
+                self.display_result(self.processor.image_data)
+    
+    def reset_gamma(self):
+        """重置为推荐的gamma值"""
+        # 检查图像是否可能是X光
+        if hasattr(self, 'processor') and self.processor.image_data is not None:
+            is_xray = self._check_if_xray(self.original_image_backup if hasattr(self, 'original_image_backup') else self.processor.image_data)
+            
+            # 设置推荐值
+            if is_xray:
+                recommended_value = 30  # 3.0
+            else:
+                recommended_value = 20  # 2.0
+                
+            self.gamma_slider.setValue(recommended_value)
+            # on_gamma_changed会自动被调用
         
     def on_point_added(self, x, y, label):
         """当添加一个点时调用"""
