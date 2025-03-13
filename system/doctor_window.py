@@ -5,6 +5,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 
 from image_viewer_window import MedicalImageViewer
+from system.delegate import TaskItemDelegate
+from system.fracture_edit import FractureHistoryDialog
 from system.stylesheet import apply_stylesheet
 from xray_viewer import XRayViewer
 from ct_viewer import CTViewer
@@ -42,6 +44,8 @@ class DoctorUI(QMainWindow):
         self.items_per_page = 10
         self.viewer = None  # Will hold the current image viewer
         self.render_on_open = False
+        self.delegate = TaskItemDelegate(self.patientList,None,self)  # ✅ 只创建一次
+        self.patientList.setItemDelegate(self.delegate)  # ✅ 只设置一次
 
         '''self.message_list_data = [
             "注意事项：请检查病人病史。",
@@ -79,6 +83,7 @@ class DoctorUI(QMainWindow):
         self.settings_menu.addAction(self.exit_action)
         self.settings_menu.addAction(self.settings_action)
 
+        self.exit_action.triggered.connect(self.exit)
         self.settings_action.triggered.connect(self.open_settings)
 
         # 调整布局比例
@@ -119,12 +124,6 @@ class DoctorUI(QMainWindow):
         self.pageLabel.setAlignment(Qt.AlignCenter)  # 设置页码居中
         self.pageControlsLayout.setContentsMargins(200, 0, 200, 0)  # 控制分页栏在中间显示
 
-        # 在列表底部添加一个"未命名"项
-        add_patient_item = QListWidgetItem("未命名")
-        self.patientList.addItem(add_patient_item)
-        # 点击"未命名"项时触发相应的操作
-        # add_patient_item.clicked.connect(self.add_new_patient)
-
         # 设置QHBoxLayout的伸缩因子
         self.detailsLayout.setStretch(0, 1)  # 病人信息部分占 1 的比例
         self.detailsLayout.setStretch(1, 0)  # 分隔线不占比例
@@ -134,6 +133,7 @@ class DoctorUI(QMainWindow):
     def load_unread_messages(self):
         """从数据库查询未读消息，并更新消息列表"""
         try:
+            session = Session()
             query = text("""
                 SELECT m.message_id, m.sender_id, m.message_content, m.created_at
                 FROM messages m
@@ -160,10 +160,16 @@ class DoctorUI(QMainWindow):
     def load_data_from_database(self):
         """从数据库加载数据并更新表格"""
         try:
+            session = Session()
             query = text("""
                 SELECT p.patient_id, p.patient_name, f.fracture_date, f.diagnosis_details
                 FROM patients p
                 LEFT JOIN fracturehistories f ON p.patient_id = f.patient_id
+                WHERE (f.fracture_date IS NULL OR f.fracture_date = (
+                SELECT MAX(fracture_date) 
+                FROM fracturehistories 
+                WHERE patient_id = p.patient_id
+            ))
             """)
             result = session.execute(query).fetchall()
             if result is None:
@@ -171,7 +177,7 @@ class DoctorUI(QMainWindow):
 
             self.tableWidget.setRowCount(len(result))
             self.tableWidget.setColumnCount(5)  # 5列（增加了"操作"列）
-            self.tableWidget.setHorizontalHeaderLabels(["ID", "姓名", "看病日期", "备注信息", "操作"])
+            self.tableWidget.setHorizontalHeaderLabels(["ID", "姓名", "看病日期", "诊断详情", "操作"])
 
             for row_idx, row_data in enumerate(result):
                 for col_idx, value in enumerate(row_data):
@@ -182,6 +188,7 @@ class DoctorUI(QMainWindow):
                 view_button = QPushButton("查看图像")
                 view_button.clicked.connect(lambda _, r=row_idx: self.open_image_viewer(r))  # 通过 lambda 传递参数
                 self.tableWidget.setCellWidget(row_idx, 4, view_button)  # 第 5 列（索引 4）
+            self.tableWidget.viewport().update()  # ✅ 确保 UI 更新
 
         except Exception as e:
             print(f"Error loading data from database: {e}")
@@ -226,11 +233,12 @@ class DoctorUI(QMainWindow):
             处理点击表格某一行的操作，获取对应的病人姓名和看病日期并显示在patientList中
             """
         # 获取点击行的病人姓名和看病日期
-        patient_name = self.tableWidget.item(row, 1).text()  # 假设病人姓名在第0列
-        fracture_date = self.tableWidget.item(row, 2).text()  # 假设看病日期在第1列
+        patient_id = self.tableWidget.item(row, 0).text()
+        patient_name = self.tableWidget.item(row, 1).text()
+        fracture_date_origin = self.tableWidget.item(row, 2).text()
         # 格式化看病日期为 MM.DD 格式
         try:
-            fracture_date = pd.to_datetime(fracture_date).strftime('%m.%d')  # 使用pandas格式化日期
+            fracture_date = pd.to_datetime(fracture_date_origin).strftime('%m.%d')  # 使用pandas格式化日期
         except ValueError:
             fracture_date = "未知"  # 如果日期格式不正确，设置为"未知"
 
@@ -241,19 +249,25 @@ class DoctorUI(QMainWindow):
         existing_items = self.patientList.findItems(formatted_patient_info, QtCore.Qt.MatchExactly)
 
         # 如果patientList中没有该病人信息，就添加到列表
-        if not existing_items:
-            self.patientList.insertItem(0, formatted_patient_info)
-        else:
-            # 如果已经存在，先删除已存在的项
+        if existing_items:
             existing_item = existing_items[0]
-            row_index = self.patientList.row(existing_item)  # 获取已存在项的行数
-            self.patientList.takeItem(row_index)  # 移除该项
-            # 然后再将该项插入到最前面
-            self.patientList.insertItem(0, formatted_patient_info)
+            row_index = self.patientList.row(existing_item)
+            self.delegate.remove(row_index)  # 先删除按钮
+            # 先断开 itemClicked 连接
+            self.patientList.itemClicked.disconnect(self.on_patient_item_clicked)
+
+        # 然后再将该项插入到最前面
+        new_item = QListWidgetItem(formatted_patient_info)
+        new_item.setData(Qt.UserRole, (patient_id,fracture_date_origin))
+        self.patientList.insertItem(0, new_item)
 
         # 设置选中对应的项
         selected_item = self.patientList.item(0)  # 选中刚刚插入的项
         self.patientList.setCurrentItem(selected_item)  # 设置选中项
+        # 避免重复绑定 itemClicked
+        if not self.patientList.receivers(self.patientList.itemClicked):
+            self.patientList.itemClicked.connect(self.on_patient_item_clicked)
+
         # 设置鼠标悬停时的背景颜色
         self.patientList.setStyleSheet("""
                 QListWidget::item:hover {
@@ -274,9 +288,11 @@ class DoctorUI(QMainWindow):
     # 定义点击事件处理函数
     def on_patient_item_clicked(self, item):
         # 获取点击项的文本内容
-        patient_name = item.text()
-        print(f"点击的病人姓名: {patient_name}")
-        # 在这里可以根据病人姓名查询数据库或更新界面
+        patient_name = item.text()[5:]  # 提取病人姓名 (假设格式为 'MM.DD姓名')
+        patient_id,fracture_date = item.data(Qt.UserRole)
+        dialog = FractureHistoryDialog(patient_name, patient_id, fracture_date,self)
+        dialog.exec_()
+        self.reset_details()
 
     def first_page(self):
         """跳转到第一页"""
@@ -306,8 +322,11 @@ class DoctorUI(QMainWindow):
 
     def display_details(self, row):
         """显示病人详情"""
+        session = Session()
         # 获取选中行的病人 ID
         patient_id = self.tableWidget.item(row, 0).text()
+        fracture_date = self.tableWidget.item(row, 2).text()
+
         try:
             # 查询病人信息
             patient_query = text("""
@@ -320,10 +339,11 @@ class DoctorUI(QMainWindow):
             # 查询病人的骨折病史信息
             history_query = text("""
                        SELECT fracture_date, fracture_location, severity_level, diagnosis_details
-                       FROM fracturehistories WHERE patient_id = :patient_id
+                       FROM fracturehistories WHERE patient_id = :patient_id AND DATE(fracture_date) = :fracture_date
+                       LIMIT 1
                    """)
 
-            history_results = session.execute(history_query, {"patient_id": patient_id}).fetchall()
+            history_results = session.execute(history_query, {"patient_id": patient_id, "fracture_date": fracture_date}).fetchall()
 
             # 设置病人基本信息
             if patient_result:
@@ -395,7 +415,7 @@ class DoctorUI(QMainWindow):
 
         try:
             print(f"搜索关键词: {search_query}")  # 调试信息
-
+            session = Session()
             # 构建查询语句，根据搜索框内容过滤病人数据
             query = text("""
                 SELECT p.patient_id, p.patient_name, f.fracture_date, f.diagnosis_details
@@ -451,11 +471,18 @@ class DoctorUI(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load image:\n{str(e)}")
 
+    def exit(self):
+        from system.login_window import LoginWindow
+        # 关闭当前医生窗口
+        self.close()
+        # 打开登录窗口
+        self.login_window = LoginWindow()
+        self.login_window.show()
 
 if __name__ == "__main__":
     import sys
 
     app = QApplication(sys.argv)
-    window = DoctorUI(2)
+    window = DoctorUI(1)
     window.show()
     sys.exit(app.exec_())

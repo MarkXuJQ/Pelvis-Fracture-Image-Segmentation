@@ -20,5 +20,7 @@ __pycache__/
 /ct_seg/outputs/
 /ct_seg/models/chatgptPrompts.md
 
+/MedSAM
+
 *.mha
 temp_*

@@ -7,22 +7,6 @@ from sqlalchemy.dialects.mysql import ENUM
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
-# 数据库连接设置（MySQL）
-
-#connection_string = "mysql+pymysql://root:hys12138@localhost:3306/pelvis"
-
-# 创建 SQLAlchemy 引擎
-#engine = create_engine(connection_string)
-
-# 测试 SQLAlchemy 连接
-# try:
-#     with engine.connect() as connection:
-#         print("SQLAlchemy 连接成功")
-# except Exception as e:
-#     print("SQLAlchemy 连接失败:", e)
-#
-# Session = sessionmaker(bind=engine)
-# session = Session()
 
 Base = declarative_base()
 
@@ -154,7 +138,7 @@ def get_connection():
         '''cursor = connection.cursor()
         try:
             # 删除表格的 SQL 语句
-            cursor.execute("DROP TABLE IF EXISTS documents")
+            cursor.execute("DROP TABLE IF EXISTS task_notes ")
             #cursor.execute("DROP TABLE IF EXISTS patients")
             connection.commit()  # 提交事务
             print("Table deleted successfully!")
@@ -356,35 +340,20 @@ def init_database():
                     ON DELETE CASCADE ON UPDATE RESTRICT
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         """)
-        # 创建文档表
-        cursor.execute("""
-                   CREATE TABLE IF NOT EXISTS documents (
-                       doc_id INT AUTO_INCREMENT PRIMARY KEY,
-                       patient_id VARCHAR(6) NOT NULL,
-                       doc_name VARCHAR(20) NOT NULL,
-                       doctor_id VARCHAR(20) NOT NULL,
-                       file_path VARCHAR(255),
-                       description TEXT,
-                       uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                       FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
-                           ON DELETE CASCADE ON UPDATE RESTRICT,
-                       FOREIGN KEY (doctor_id) REFERENCES doctors(doctor_id)
-                           ON DELETE CASCADE ON UPDATE RESTRICT
-                   ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-               """)
+
         # 创建笔记表
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS notes (
+            CREATE TABLE IF NOT EXISTS task_notes (
                 note_id INT AUTO_INCREMENT PRIMARY KEY,
-                patient_id VARCHAR(6) NOT NULL,
+                task_id INT NOT NULL,
                 doctor_id VARCHAR(20) NOT NULL,
-                note_content TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
-                    ON DELETE CASCADE ON UPDATE RESTRICT,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+                    ON DELETE CASCADE ON UPDATE CASCADE,
                 FOREIGN KEY (doctor_id) REFERENCES doctors(doctor_id)
-                    ON DELETE CASCADE ON UPDATE RESTRICT
+                    ON DELETE CASCADE ON UPDATE CASCADE
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         """)
         connection.commit()
@@ -399,7 +368,7 @@ def init_database():
         return False
 
 # 插入病人信息的函数
-def insert_patient(patient_id, patient_name, password_hash, phone_number=None, date_of_birth=None,
+def insert_patient(patient_id, patient_name, password, phone_number=None, date_of_birth=None,
                    gender=None, contact_person=None, contact_phone=None, email=None, age=None, id_card=None):
     """插入病人信息"""
     try:
@@ -412,11 +381,11 @@ def insert_patient(patient_id, patient_name, password_hash, phone_number=None, d
 
         # 插入数据的 SQL
         insert_query = """
-        INSERT INTO patients (patient_id, patient_name, password_hash, phone_number, date_of_birth, gender, 
+        INSERT INTO patients (patient_id, patient_name, password, phone_number, date_of_birth, gender, 
                               contact_person, contact_phone, email, age, id_card)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(insert_query, (patient_id, patient_name, password_hash, phone_number, date_of_birth,
+        cursor.execute(insert_query, (patient_id, patient_name, password, phone_number, date_of_birth,
                                       gender, contact_person, contact_phone, email, age, id_card))
         connection.commit()
         logger.info(f"Successfully inserted patient {patient_name} with ID {patient_id}.")
@@ -536,14 +505,31 @@ def insert_task(task_id, task_title, task_description=None, assigned_doctor_id=N
         cursor.close()
         connection.close()
 
+def insert_task_note(task_id, doctor_id, content):
+    """插入任务笔记，并记录创建时间"""
+    try:
+        connection = get_connection()
+        cursor = connection.cursor()
+        # 获取当前时间
+        created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sql = """
+        INSERT INTO task_notes (task_id, doctor_id, content, created_at)
+        VALUES (%s, %s, %s, %s)
+        """
+        cursor.execute(sql, (task_id, doctor_id, content, created_at))
+        connection.commit()
+    except pymysql.MySQLError as e:
+        print(f"插入笔记失败: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
 import pymysql
 from pymysql import Error
 from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
-
-
 
 
 insert_doctor(1, "Dr. John Doe", "password123", "1234567890", "Orthopedics")
@@ -554,16 +540,18 @@ insert_doctor(5, "Dr. Michael Brown", "password101", "4567890123", "Dermatology"
 insert_doctor(6, "Dr. Lisa Green", "password202", "5678901234", "Neurology")
 insert_doctor(7, "Dr. Mark Lee", "password303", "6789012345", "Gastroenterology")
 
-# 假设要插入一条聊天记录
-#insert_chat_record(2, 1, "Damn it!")
-#insert_chat_record(2, 1, "Shit!")
-#insert_chat_record(3, 1, "Shit!")
-#insert_chat_record(1, 3, "ok!")
+# 插入几条任务笔记
+'''insert_task_note(1, 1, "病人恢复情况良好，建议减少药量。")
+insert_task_note(1, 1, "下周安排复查，检查骨折愈合情况。")
+insert_task_note(1, 1, "CT 结果显示无异常，可以考虑出院。")
+insert_task_note(1, 2, "患者血压偏高，建议每日监测并调整用药。")
+insert_task_note(1, 2, "术后情况稳定，但仍需观察感染风险。")'''
+
 # 示例：插入一条病人信息
 insert_patient(
     patient_id="P00001",
     patient_name="张三",
-    password_hash="hashed_password_123",
+    password="hashed_password_123",
     phone_number="1234567890",
     date_of_birth="1985-06-15",
     gender="male",
@@ -583,11 +571,19 @@ insert_fracture_history(
     severity_level="moderate",
     diagnosis_details="Fracture at the pelvic region."
 )
+insert_fracture_history(
+    history_id="F00004",
+    patient_id="P00001",
+    fracture_date="2024-05-20",
+    fracture_location="pelvis",
+    severity_level="moderate",
+    diagnosis_details="Fracture."
+)
 # 插入第一条病人信息
 insert_patient(
     patient_id="P00002",
     patient_name="李四",
-    password_hash="hashed_password_456",
+    password="hashed_password_456",
     phone_number="2345678901",
     date_of_birth="1990-08-22",
     gender="female",
@@ -612,7 +608,7 @@ insert_fracture_history(
 insert_patient(
     patient_id="P00003",
     patient_name="王五",
-    password_hash="hashed_password_789",
+    password="hashed_password_789",
     phone_number="3456789012",
     date_of_birth="1987-02-18",
     gender="male",
@@ -643,7 +639,7 @@ insert_task(
 )
 
 insert_task(
-    task_id=3,
+    task_id=2,
     task_title="Review Medication Plan",
     task_description="Evaluate the patient's current medication plan and suggest adjustments if needed.",
     assigned_doctor_id=1,
@@ -651,7 +647,6 @@ insert_task(
     due_date="2025-03-02 10:30:00",
     status="in_progress"
 )
-
 # 在程序启动时初始化数据库
 if __name__ == "__main__":
     init_database()
