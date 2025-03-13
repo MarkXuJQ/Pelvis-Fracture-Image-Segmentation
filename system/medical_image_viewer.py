@@ -14,6 +14,7 @@ from matplotlib.figure import Figure
 import matplotlib.patches as mpatches
 import matplotlib.font_manager as fm
 import matplotlib.colors as mcolors
+import traceback  # 添加traceback模块导入
 
 # 设置中文字体
 matplotlib.rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'sans-serif']
@@ -27,6 +28,25 @@ os.environ['PYTORCH_NO_DOWNLOAD'] = '1'  # 尝试禁用自动下载
 
 # 导入我们的医学图像处理类
 from system.medical_image_utils import MedicalImageProcessor, list_available_models
+
+# 添加辅助函数
+def normalize_box(box, shape):
+    """将框坐标归一化到[0,1]范围"""
+    h, w = shape
+    return np.array([
+        box[0] / w,
+        box[1] / h,
+        box[2] / w,
+        box[3] / h
+    ], dtype=np.float64)
+
+def apply_ct_window(img, window_center=50, window_width=400):
+    """应用CT窗宽窗位"""
+    img_min = window_center - window_width // 2
+    img_max = window_center + window_width // 2
+    img = np.clip(img, img_min, img_max)
+    img = (img - img_min) / (img_max - img_min)
+    return img
 
 class InteractiveCanvas(FigureCanvas):
     """支持点击和框选的交互式画布"""
@@ -294,6 +314,48 @@ class InteractiveCanvas(FigureCanvas):
         for i, box in enumerate(boxes):
             self.draw_saved_box(box, i)
 
+    def set_circles(self, points, labels):
+        """设置点提示"""
+        # 清除之前的圆点
+        for circle in self.points_plotted:
+            if circle in self.axes.lines:
+                circle.remove()
+        
+        self.points_plotted = []
+        self.points = []
+        
+        # 如果有新的点，则添加它们
+        if points and labels and len(points) > 0 and len(labels) > 0:
+            for i, (x, y) in enumerate(points):
+                if i < len(labels):  # 确保索引有效
+                    label = labels[i]
+                    self.add_circle(x, y, label)
+        
+        self.draw_idle()  # 重绘画布
+    
+    def add_circle(self, x, y, label):
+        """添加一个圆点到画布上"""
+        # 选择颜色
+        color = 'red' if label == 1 else 'blue'
+        
+        # 绘制圆点
+        circle = plt.Circle((x, y), 5, color=color, fill=True, alpha=0.6)
+        self.axes.add_patch(circle)
+        self.points_plotted.append(circle)
+        self.points.append((x, y, label))
+
+    def name_to_rgb(self, color_name):
+        """将颜色名称转换为RGB值"""
+        color_map = {
+            'red': [255, 0, 0],
+            'green': [0, 255, 0],
+            'blue': [0, 0, 255],
+            'yellow': [255, 255, 0],
+            'cyan': [0, 255, 255],
+            'magenta': [255, 0, 255],
+            'white': [255, 255, 255]
+        }
+        return color_map.get(color_name, [255, 0, 0])  # 默认返回红色
 
 class MedicalImageApp(QMainWindow):
     def __init__(self):
@@ -565,38 +627,30 @@ class MedicalImageApp(QMainWindow):
             self.bg_radio.setEnabled(True)
             
     def on_view_type_changed(self, index):
-        """当视图类型改变时调用"""
-        if not hasattr(self, 'processor') or self.processor.image_data is None or not self.processor.is_3d:
-            return
-            
-        if index == 0:
-            self.current_view = 'axial'
-            self.current_slice = self.axial_slice
-            # 更新滑块范围
-            depth = self.processor.image_data.shape[0]
-            self.slice_slider.setMaximum(depth - 1)
-            self.slice_slider.setValue(self.axial_slice)
-            self.slice_label.setText(f"切片: {self.axial_slice}/{depth - 1}")
-        elif index == 1:
-            self.current_view = 'coronal'
-            self.current_slice = self.coronal_slice
-            # 更新滑块范围
-            height = self.processor.image_data.shape[1]
-            self.slice_slider.setMaximum(height - 1)
-            self.slice_slider.setValue(self.coronal_slice)
-            self.slice_label.setText(f"切片: {self.coronal_slice}/{height - 1}")
-        elif index == 2:
-            self.current_view = 'sagittal'
-            self.current_slice = self.sagittal_slice
-            # 更新滑块范围
-            width = self.processor.image_data.shape[2]
-            self.slice_slider.setMaximum(width - 1)
-            self.slice_slider.setValue(self.sagittal_slice)
-            self.slice_label.setText(f"切片: {self.sagittal_slice}/{width - 1}")
-            
-        # 清除当前点和框
+        """处理视图类型改变事件"""
+        view_types = ['axial', 'coronal', 'sagittal']
+        self.current_view = view_types[index]
+        
+        # 清除分割结果和交互提示，避免维度不匹配问题
+        self.mask = None
+        self.box_masks = []
         self.clear_points()
         self.clear_box()
+        
+        # 更新切片滑块最大值
+        if self.processor.is_3d:
+            if self.current_view == 'axial':
+                max_slice = self.processor.image_data.shape[0] - 1
+                self.slice_slider.setValue(self.axial_slice)
+            elif self.current_view == 'coronal':
+                max_slice = self.processor.image_data.shape[1] - 1
+                self.slice_slider.setValue(self.coronal_slice)
+            elif self.current_view == 'sagittal':
+                max_slice = self.processor.image_data.shape[2] - 1
+                self.slice_slider.setValue(self.sagittal_slice)
+                
+            self.slice_slider.setMaximum(max_slice)
+            self.slice_label.setText(f"切片: {self.slice_slider.value()}/{max_slice}")
         
         # 更新显示
         self.update_display()
@@ -632,92 +686,118 @@ class MedicalImageApp(QMainWindow):
             self.update_display()
             
     def update_display(self):
-        """更新显示内容"""
+        """更新显示"""
         if not hasattr(self, 'processor') or self.processor.image_data is None:
             return
             
-        # 根据当前视图类型获取对应的切片
+        # 获取当前切片
         if self.processor.is_3d:
             if self.current_view == 'axial':
                 img = self.processor.image_data[self.axial_slice]
             elif self.current_view == 'coronal':
-                # 取冠状面(前额面)切片，需要重新组织数据并旋转180度
                 img = self.processor.image_data[:, self.coronal_slice, :]
                 img = np.rot90(img, k=2)  # 旋转180度
             elif self.current_view == 'sagittal':
-                # 取矢状面切片，需要重新组织数据并旋转180度
                 img = self.processor.image_data[:, :, self.sagittal_slice]
                 img = np.rot90(img, k=2)  # 旋转180度
-            else:
-                return
         else:
             img = self.processor.image_data
         
-        # 显示原始图像
+        # 显示图像
         self.original_view.display_image(img)
         
-        # 显示框和点提示
-        for box in self.boxes:
-            self.original_view.draw_saved_box(box)
+        # 更新点和框
+        self.original_view.set_circles(self.points, self.point_labels)
+        for i, box in enumerate(self.boxes):
+            color_idx = i % len(self.original_view.box_colors)
+            self.original_view.draw_saved_box(box, color_idx)
         
-        # 如果有分割结果，显示结果
+        # 显示分割结果
         if self.mask is not None:
             self.display_result(img)
     
-    def display_result(self, img):
+    def display_result(self, current_slice):
         """显示分割结果"""
         if self.mask is None:
             return
             
-        # 获取当前视图的掩码
-        if self.processor.is_3d:
+        # 确定掩码是2D还是3D
+        mask_is_3d = len(self.mask.shape) == 3
+        
+        # 如果是3D掩码，获取当前视图的切片
+        if mask_is_3d:
             if self.current_view == 'axial':
                 mask_slice = self.mask[self.axial_slice]
             elif self.current_view == 'coronal':
-                # 获取冠状面掩码并旋转180度
                 mask_slice = self.mask[:, self.coronal_slice, :]
-                mask_slice = np.rot90(mask_slice, k=2)  # 旋转180度
+                mask_slice = np.rot90(mask_slice, k=2)
             elif self.current_view == 'sagittal':
-                # 获取矢状面掩码并旋转180度
                 mask_slice = self.mask[:, :, self.sagittal_slice]
-                mask_slice = np.rot90(mask_slice, k=2)  # 旋转180度
-            else:
-                return
+                mask_slice = np.rot90(mask_slice, k=2)
         else:
+            # 如果是2D掩码，直接使用
             mask_slice = self.mask
         
-        # 清除之前的绘图
+        # 清除之前的结果
         self.result_ax.clear()
         
-        # 显示原始图像
-        if len(img.shape) == 3:  # 彩色图像
-            self.result_ax.imshow(img)
-        else:  # 灰度图像
-            self.result_ax.imshow(img, cmap='gray')
-        
-        # 使用不同颜色显示每个框的分割结果
-        if self.box_masks and self.box_colors:
-            for i, (mask, color) in enumerate(zip(self.box_masks, self.box_colors)):
-                # 将matplotlib颜色转换为RGB值
-                if isinstance(color, str):
-                    # 如果颜色是字符串(如'red')，转换为RGB
-                    rgb = mcolors.to_rgb(color)
-                    r, g, b = [int(c * 255) for c in rgb]
+        # 显示结果
+        if len(self.box_masks) > 1:
+            # 多个框，使用彩色掩码
+            print(f"使用彩色掩码: {len(self.box_masks)}个, 颜色: {[color for color in self.box_colors[:len(self.box_masks)]]}")
+            
+            # 先显示原始图像
+            self.result_ax.imshow(current_slice, cmap='gray')
+            
+            # 然后叠加每个掩码
+            for i, mask in enumerate(self.box_masks):
+                if i >= len(self.box_colors):
+                    break
+                
+                # 确定当前掩码的切片
+                if mask_is_3d:
+                    if self.current_view == 'axial':
+                        mask_i_slice = mask[self.axial_slice]
+                    elif self.current_view == 'coronal':
+                        mask_i_slice = mask[:, self.coronal_slice, :]
+                        mask_i_slice = np.rot90(mask_i_slice, k=2)
+                    elif self.current_view == 'sagittal':
+                        mask_i_slice = mask[:, :, self.sagittal_slice]
+                        mask_i_slice = np.rot90(mask_i_slice, k=2)
                 else:
-                    # 如果已经是RGB元组
-                    r, g, b = [int(c * 255) for c in color]
+                    mask_i_slice = mask
                 
                 # 创建彩色掩码
-                colored_mask = np.zeros((*mask.shape, 4), dtype=np.float32)
-                colored_mask[mask > 0] = [r/255, g/255, b/255, 0.6]  # 更高的透明度
+                color_name = self.box_colors[i]
+                color_rgb = self.original_view.name_to_rgb(color_name)
                 
-                # 显示掩码
+                # 创建彩色掩码数组
+                h, w = mask_i_slice.shape
+                colored_mask = np.zeros((h, w, 4))
+                colored_mask[mask_i_slice > 0, 0] = color_rgb[0] / 255.0
+                colored_mask[mask_i_slice > 0, 1] = color_rgb[1] / 255.0
+                colored_mask[mask_i_slice > 0, 2] = color_rgb[2] / 255.0
+                colored_mask[mask_i_slice > 0, 3] = 0.5  # 半透明
+                
+                # 显示彩色掩码
                 self.result_ax.imshow(colored_mask)
         else:
-            # 如果没有框特定的掩码，使用默认红色显示整体掩码
-            colored_mask = np.zeros((*mask_slice.shape, 4), dtype=np.float32)
-            colored_mask[mask_slice > 0] = [1, 0, 0, 0.6]  # 红色，透明度0.6
-            self.result_ax.imshow(colored_mask)
+            # 单个掩码，使用改进的显示方式
+            # 先显示原始图像
+            self.result_ax.imshow(current_slice, cmap='gray')
+            
+            # 创建带透明度的红色掩码
+            if np.any(mask_slice):
+                h, w = mask_slice.shape
+                red_mask = np.zeros((h, w, 4))
+                red_mask[mask_slice > 0, 0] = 1.0  # 红色通道
+                red_mask[mask_slice > 0, 3] = 0.5  # Alpha通道，半透明
+                
+                # 显示填充的红色掩码
+                self.result_ax.imshow(red_mask)
+                
+                # 同时也显示轮廓，增强可视性
+                self.result_ax.contour(mask_slice, colors=['red'], linewidths=1.5)
         
         self.result_ax.axis('off')
         self.result_canvas.draw()
@@ -853,7 +933,7 @@ class MedicalImageApp(QMainWindow):
         selected_model = self.model_selector.currentText().split(':')[0]
         
         if selected_model != 'medsam':
-            QMessageBox.warning(self, "提示", "请选择MedSAM模型进行点提示分割")
+            QMessageBox.warning(self, "提示", "请选择MedSAM模型进行分割")
             return
             
         # 检查是否有图像
@@ -862,146 +942,51 @@ class MedicalImageApp(QMainWindow):
             return
             
         # 设置模型
-        self.processor.set_segmentation_model(
-            model_name='medsam',
-            checkpoint_path=self.available_models['medsam']['weights_path']
-        )
-        
-        # 准备点提示和框提示
-        points_array = np.array(self.points) if self.points else None
-        labels_array = np.array(self.point_labels) if self.point_labels else None
-        boxes_array = np.array(self.boxes) if self.boxes else None
-        
-        # 创建掩码存储
-        if self.processor.is_3d:
-            if self.mask is None:
-                self.mask = np.zeros_like(self.processor.image_data, dtype=bool)
+        try:
+            self.processor.set_segmentation_model(
+                model_name='medsam',
+                checkpoint_path=self.available_models['medsam']['weights_path']
+            )
             
-            # 根据当前视图进行分割
-            if self.current_view == 'axial':
-                slice_img = self.processor.image_data[self.axial_slice]
-                
-                # 清空当前切片的框掩码
-                self.box_masks = []
-                
-                # 为每个框单独生成掩码
-                if boxes_array is not None and len(boxes_array) > 0:
-                    combined_mask = np.zeros_like(slice_img, dtype=bool)
-                    for i, box in enumerate(boxes_array):
-                        slice_mask = self.processor.segmenter.segment(
-                            slice_img, 
-                            points=points_array, 
-                            point_labels=labels_array,
-                            box=box
-                        )
-                        self.box_masks.append(slice_mask)
-                        combined_mask = np.logical_or(combined_mask, slice_mask)
-                    
-                    # 将合并掩码放回3D掩码中
-                    self.mask[self.axial_slice] = combined_mask
-                else:
-                    # 只使用点提示
-                    slice_mask = self.processor.segmenter.segment(
-                        slice_img, 
-                        points=points_array, 
-                        point_labels=labels_array,
-                        box=None
-                    )
-                    self.mask[self.axial_slice] = slice_mask
-                    self.box_masks = [slice_mask]  # 单个掩码
+            # 准备点提示和框提示
+            points_array = np.array(self.points) if self.points else None
+            labels_array = np.array(self.point_labels) if self.point_labels else None
+            boxes_array = np.array(self.boxes) if self.boxes else None
             
-            elif self.current_view == 'coronal':
-                # 分割冠状面
-                slice_img = self.processor.image_data[:, self.coronal_slice, :]
-                slice_img_rotated = np.rot90(slice_img, k=2)  # 旋转后的图像用于显示和分割
-                
-                # 如果有框，分割每个框
-                if boxes_array is not None and len(boxes_array) > 0:
-                    combined_mask = np.zeros_like(slice_img_rotated, dtype=bool)
-                    h, w = slice_img_rotated.shape
-                    
-                    for i, box in enumerate(boxes_array):
-                        # 旋转框坐标以匹配旋转后的图像
-                        x1, y1, x2, y2 = box
-                        box_rotated = [
-                            w - x2, h - y2,  # 新的左上角
-                            w - x1, h - y1   # 新的右下角
-                        ]
-                        
-                        slice_mask = self.processor.segmenter.segment(
-                            slice_img_rotated,
-                            points=points_array,
-                            point_labels=labels_array,
-                            box=box_rotated
-                        )
-                        self.box_masks.append(slice_mask)
-                        combined_mask = np.logical_or(combined_mask, slice_mask)
-                    
-                    # 旋转掩码回原始方向后存入3D掩码
-                    combined_mask_original = np.rot90(combined_mask, k=2)
-                    self.mask[:, self.coronal_slice, :] = combined_mask_original
-                else:
-                    # 只使用点提示
-                    slice_mask = self.processor.segmenter.segment(
-                        slice_img_rotated,
-                        points=points_array,
-                        point_labels=labels_array,
-                        box=None
-                    )
-                    self.mask[:, self.coronal_slice, :] = slice_mask
-                    self.box_masks = [slice_mask]  # 单个掩码
-            
-            elif self.current_view == 'sagittal':
-                # 分割矢状面
-                slice_img = self.processor.image_data[:, :, self.sagittal_slice]
-                slice_img_rotated = np.rot90(slice_img, k=2)  # 旋转后的图像用于显示和分割
-                
-                # 如果有框，分割每个框
-                if boxes_array is not None and len(boxes_array) > 0:
-                    combined_mask = np.zeros_like(slice_img_rotated, dtype=bool)
-                    h, w = slice_img_rotated.shape
-                    
-                    for i, box in enumerate(boxes_array):
-                        # 旋转框坐标以匹配旋转后的图像
-                        x1, y1, x2, y2 = box
-                        box_rotated = [
-                            w - x2, h - y2,  # 新的左上角
-                            w - x1, h - y1   # 新的右下角
-                        ]
-                        
-                        slice_mask = self.processor.segmenter.segment(
-                            slice_img_rotated,
-                            points=points_array,
-                            point_labels=labels_array,
-                            box=box_rotated
-                        )
-                        self.box_masks.append(slice_mask)
-                        combined_mask = np.logical_or(combined_mask, slice_mask)
-                    
-                    # 旋转掩码回原始方向后存入3D掩码
-                    combined_mask_original = np.rot90(combined_mask, k=2)
-                    self.mask[:, :, self.sagittal_slice] = combined_mask_original
-                else:
-                    # 只使用点提示
-                    slice_mask = self.processor.segmenter.segment(
-                        slice_img_rotated,
-                        points=points_array,
-                        point_labels=labels_array,
-                        box=None
-                    )
-                    self.mask[:, :, self.sagittal_slice] = slice_mask
-                    self.box_masks = [slice_mask]  # 单个掩码
-            
-        else:
             # 清空框掩码
             self.box_masks = []
             
+            # 确保 box_colors 与 boxes 长度匹配
+            if len(self.box_colors) != len(self.boxes):
+                self.box_colors = [self.original_view.box_colors[i % len(self.original_view.box_colors)] for i in range(len(self.boxes))]
+            
+            # 获取当前视图的2D切片
+            if self.processor.is_3d:
+                if self.current_view == 'axial':
+                    current_slice = self.processor.image_data[self.axial_slice]
+                elif self.current_view == 'coronal':
+                    current_slice = self.processor.image_data[:, self.coronal_slice, :]
+                    current_slice = np.rot90(current_slice, k=2)  # 旋转180度
+                elif self.current_view == 'sagittal':
+                    current_slice = self.processor.image_data[:, :, self.sagittal_slice]
+                    current_slice = np.rot90(current_slice, k=2)  # 旋转180度
+                image_to_segment = current_slice
+                
+                # 保存视图信息，方便后续转换回3D
+                self.current_segment_view = self.current_view
+                self.segment_axial_idx = self.axial_slice
+                self.segment_coronal_idx = self.coronal_slice
+                self.segment_sagittal_idx = self.sagittal_slice
+            else:
+                image_to_segment = self.processor.image_data
+            
             # 对2D图像进行分割
             if boxes_array is not None and len(boxes_array) > 0:
-                combined_mask = np.zeros_like(self.processor.image_data, dtype=bool)
+                combined_mask = np.zeros_like(image_to_segment, dtype=bool)
                 for i, box in enumerate(boxes_array):
+                    print(f"处理框 {i}: {box}")
                     mask = self.processor.segmenter.segment(
-                        self.processor.image_data,
+                        image_to_segment,  # 使用当前2D切片
                         points=points_array,
                         point_labels=labels_array,
                         box=box
@@ -1011,16 +996,22 @@ class MedicalImageApp(QMainWindow):
                 self.mask = combined_mask
             else:
                 # 只使用点提示
+                print("使用点提示进行分割")
                 self.mask = self.processor.segmenter.segment(
-                    self.processor.image_data,
+                    image_to_segment,  # 使用当前2D切片
                     points=points_array,
                     point_labels=labels_array,
                     box=None
                 )
                 self.box_masks = [self.mask]  # 单个掩码
-        
-        # 显示结果
-        self.update_display()
+            
+            # 显示结果
+            self.update_display()
+            
+        except Exception as e:
+            print(f"分割时出现错误: {e}")
+            print(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"分割失败: {str(e)}")
     
     def save_result(self):
         """保存分割结果"""

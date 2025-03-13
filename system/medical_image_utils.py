@@ -7,18 +7,15 @@ import torch
 from typing import Union, Tuple, Optional, List
 import cv2
 import sys
-from skimage import transform
-import torch.nn.functional as F
 
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 导入我们的分割模型
-from system.models import MedSamSegmenter, DeepLabV3Segmenter, SegmentationAPI
-
+# 导入分割模型
+from system.medsam_segmenter import MedSAMSegmenter
 
 class MedicalImageProcessor:
-    """医学图像处理类，提供加载、显示和分割功能"""
+    """医学图像处理类，提供加载、显示和基础处理功能"""
     
     SUPPORTED_3D_FORMATS = ['.mha', '.nii', '.nii.gz']
     SUPPORTED_2D_FORMATS = ['.tif', '.jpg', '.png', '.bmp', '.jpeg']
@@ -119,371 +116,78 @@ class MedicalImageProcessor:
             if slice_index is None:
                 slice_index = self.image_data.shape[0] // 2  # 默认显示中间切片
             
-            # 确保slice_index在有效范围内
-            if slice_index < 0 or slice_index >= self.image_data.shape[0]:
-                print(f"错误: 切片索引 {slice_index} 超出范围 (0-{self.image_data.shape[0]-1})")
-                return
-            
             plt.imshow(self.image_data[slice_index], cmap='gray')
-            plt.title(f"3D图像切片 #{slice_index}/{self.image_data.shape[0]-1}")
-            
+            plt.title(f"3D图像切片 #{slice_index}")
         else:
-            # 对于2D图像，直接显示
-            if len(self.image_data.shape) == 3 and self.image_data.shape[2] == 3:  # RGB图像
-                plt.imshow(self.image_data)
-            else:  # 灰度图像
-                plt.imshow(self.image_data, cmap='gray')
-            
+            plt.imshow(self.image_data, cmap='gray' if len(self.image_data.shape) == 2 else None)
             plt.title("2D图像")
-        
-        plt.colorbar(label='像素值')
-        plt.axis('on')
-        plt.tight_layout()
+            
+        plt.colorbar()
         plt.show()
     
-    def display_3d_slices(self, num_slices: int = 4) -> None:
+    def save_mask(self, mask: np.ndarray, file_path: str) -> bool:
         """
-        显示3D图像的多个切片
+        保存分割掩码
         
         参数:
-            num_slices: 要显示的切片数量
-        """
-        if not self.is_3d or self.image_data is None:
-            print("错误: 没有加载3D图像")
-            return
-        
-        total_slices = self.image_data.shape[0]
-        indices = np.linspace(0, total_slices-1, num_slices, dtype=int)
-        
-        fig, axes = plt.subplots(1, num_slices, figsize=(16, 4))
-        
-        for i, idx in enumerate(indices):
-            axes[i].imshow(self.image_data[idx], cmap='gray')
-            axes[i].set_title(f"切片 #{idx}")
-            axes[i].axis('off')
-        
-        plt.tight_layout()
-        plt.show()
-    
-    def set_segmentation_model(self, model_name, **kwargs):
-        """
-        设置分割模型
-        
-        参数:
-            model_name: 模型类型 ('medsam', 'deeplabv3_resnet50' 或 'deeplabv3_resnet101')
-            **kwargs: 模型特定的参数
-        """
-        try:
-            models = list_available_models()
-            if model_name not in models:
-                raise ValueError(f"不支持的模型类型: {model_name}")
-            
-            model_info = models[model_name]
-            checkpoint_path = kwargs.get('checkpoint_path', model_info['weights_path'])
-            
-            # 检查模型文件是否存在
-            if not os.path.exists(checkpoint_path):
-                raise FileNotFoundError(f"找不到模型权重文件: {checkpoint_path}")
-            
-            if model_name == 'medsam':
-                self.segmenter = MedSamSegmenter(
-                    model_type=kwargs.get('model_type', 'vit_b'),
-                    checkpoint_path=checkpoint_path,
-                    device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
-                )
-                
-            elif model_name.startswith('deeplabv3'):
-                # 创建模型并明确禁用预训练下载
-                self.segmenter = DeepLabV3Segmenter(
-                    num_classes=kwargs.get('num_classes', 21),
-                    pretrained=False,
-                    backbone=model_info.get('backbone', 'resnet50'),  # 使用模型信息中指定的骨干网络
-                    device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
-                )
-                
-                # 加载本地权重
-                print(f"正在加载自定义DeepLabV3权重: {checkpoint_path}")
-                self.segmenter.load_weights(checkpoint_path)
-                
-            else:
-                raise ValueError(f"不支持的模型类型: {model_name}")
-            
-        except Exception as e:
-            print(f"设置分割模型时出错: {str(e)}")
-            raise e
-    
-    def segment_image(self, **kwargs):
-        """
-        分割图像
-        
-        参数:
-            **kwargs: 分割特定参数（例如points, point_labels, target_class等）
-            
-        返回:
-            mask: 分割结果
-        """
-        if self.segmenter is None:
-            raise ValueError("请先使用set_segmentation_model设置分割模型")
-        
-        if self.is_3d:
-            print("对3D图像进行分割，每个切片单独处理")
-            masks = []
-            for i in range(self.image_data.shape[0]):
-                # 确保图像为浮点型并且范围在0-1之间
-                slice_img = self.image_data[i].astype(np.float32)
-                if slice_img.max() > 1.0:
-                    slice_img = slice_img / 255.0
-                    
-                try:
-                    mask = self.segmenter.segment(slice_img, **kwargs)
-                    masks.append(mask)
-                except Exception as e:
-                    print(f"分割切片 {i} 时出错: {e}")
-                    # 填充空白掩码
-                    masks.append(np.zeros_like(self.image_data[i], dtype=bool))
-                
-            return np.stack(masks)
-        else:
-            # 确保图像为浮点型并且范围在0-1之间
-            img = self.image_data.astype(np.float32)
-            if img.max() > 1.0:
-                img = img / 255.0
-            
-            return self.segmenter.segment(img, **kwargs)
-    
-    def display_segmentation_result(self, mask: np.ndarray, slice_index: int = None) -> None:
-        """
-        显示分割结果
-        
-        参数:
-            mask: 分割掩码
-            slice_index: 3D图像的切片索引，默认显示中间切片
-        """
-        if self.image_data is None:
-            print("错误: 没有加载图像")
-            return
-        
-        if mask is None:
-            print("错误: 没有分割掩码")
-            return
-        
-        plt.figure(figsize=(15, 5))
-        
-        if self.is_3d:
-            if slice_index is None:
-                slice_index = self.image_data.shape[0] // 2
-            
-            # 显示原图
-            plt.subplot(1, 3, 1)
-            plt.imshow(self.image_data[slice_index], cmap='gray')
-            plt.title(f"原始图像 (切片 #{slice_index})")
-            plt.axis('on')
-            
-            # 显示掩码
-            plt.subplot(1, 3, 2)
-            plt.imshow(mask[slice_index], cmap='viridis')
-            plt.title(f"分割掩码 (切片 #{slice_index})")
-            plt.axis('on')
-            
-            # 显示叠加图
-            plt.subplot(1, 3, 3)
-            plt.imshow(self.image_data[slice_index], cmap='gray')
-            plt.imshow(mask[slice_index], alpha=0.5, cmap='viridis')
-            plt.title("叠加图")
-            plt.axis('on')
-            
-        else:
-            # 显示原图
-            plt.subplot(1, 3, 1)
-            if len(self.image_data.shape) == 3 and self.image_data.shape[2] == 3:
-                plt.imshow(self.image_data)
-            else:
-                plt.imshow(self.image_data, cmap='gray')
-            plt.title("原始图像")
-            plt.axis('on')
-            
-            # 显示掩码
-            plt.subplot(1, 3, 2)
-            plt.imshow(mask, cmap='viridis')
-            plt.title("分割掩码")
-            plt.axis('on')
-            
-            # 显示叠加图
-            plt.subplot(1, 3, 3)
-            if len(self.image_data.shape) == 3 and self.image_data.shape[2] == 3:
-                plt.imshow(self.image_data)
-            else:
-                plt.imshow(self.image_data, cmap='gray')
-            plt.imshow(mask, alpha=0.5, cmap='viridis')
-            plt.title("叠加图")
-            plt.axis('on')
-        
-        plt.tight_layout()
-        plt.show()
-    
-    def save_segmentation_result(self, mask: np.ndarray, output_path: str) -> bool:
-        """
-        保存分割结果
-        
-        参数:
-            mask: 分割掩码
-            output_path: 输出文件路径
+            mask: 分割掩码数组
+            file_path: 保存路径
             
         返回:
             bool: 成功保存返回True，否则返回False
         """
-        if mask is None:
-            print("错误: 没有分割掩码")
-            return False
-        
         try:
-            if self.is_3d:
-                # 保存3D分割结果
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            if file_ext == '.nii.gz' or file_ext == '.nii':
+                # 保存为NIFTI格式
                 mask_sitk = sitk.GetImageFromArray(mask.astype(np.uint8))
                 
-                # 复制原始图像的元数据（如果有）
-                if 'spacing' in self.metadata:
+                # 如果原图是3D图像，复制原图的元数据
+                if self.is_3d and 'spacing' in self.metadata:
                     mask_sitk.SetSpacing(self.metadata['spacing'])
-                if 'origin' in self.metadata:
+                if self.is_3d and 'origin' in self.metadata:
                     mask_sitk.SetOrigin(self.metadata['origin'])
-                if 'direction' in self.metadata:
+                if self.is_3d and 'direction' in self.metadata:
                     mask_sitk.SetDirection(self.metadata['direction'])
+                    
+                sitk.WriteImage(mask_sitk, file_path)
                 
-                sitk.WriteImage(mask_sitk, output_path)
+            elif file_ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tif']:
+                # 保存为图像格式
+                mask_uint8 = (mask * 255).astype(np.uint8)
+                cv2.imwrite(file_path, mask_uint8)
                 
             else:
-                # 保存2D分割结果
-                Image.fromarray((mask * 255).astype(np.uint8)).save(output_path)
-            
-            print(f"已成功保存分割结果到: {output_path}")
+                print(f"不支持的保存格式: {file_ext}")
+                return False
+                
+            print(f"掩码已保存到: {file_path}")
             return True
             
         except Exception as e:
-            print(f"保存分割结果时出错: {str(e)}")
+            print(f"保存掩码时出错: {str(e)}")
             return False
     
-    def setup_medsam_model(self, model_type='vit_b', checkpoint_path=None):
-        """设置MedSAM模型"""
-        try:
-            print(f"加载MedSAM模型 ({model_type})从: {checkpoint_path}")
-            from segment_anything import sam_model_registry
-            
-            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-            self.medsam_model = sam_model_registry[model_type](checkpoint=checkpoint_path)
-            self.medsam_model.to(device)
-            self.medsam_model.eval()
-            self.device = device
-            print(f"MedSAM模型已加载到设备: {device}")
+    def set_segmentation_model(self, model_name, checkpoint_path):
+        """
+        设置分割模型
+        
+        参数:
+            model_name: 模型类型 ('medsam')
+            checkpoint_path: 权重文件路径
+        """
+        if model_name == 'medsam':
+            self.segmenter = MedSAMSegmenter(
+                model_type='vit_b',
+                checkpoint_path=checkpoint_path,
+                device='cuda' if torch.cuda.is_available() else 'cpu'
+            )
+            print(f"MedSAM分割器已设置，权重文件: {checkpoint_path}")
             return True
-        except Exception as e:
-            print(f"加载MedSAM模型时发生错误: {str(e)}")
+        else:
+            print(f"不支持的模型类型: {model_name}")
             return False
-            
-    def compute_image_embedding(self, image):
-        """计算图像的嵌入表示"""
-        if not hasattr(self, 'medsam_model'):
-            raise ValueError("需要先设置MedSAM模型")
-            
-        # 确保图像是适当的类型和范围
-        if image.max() > 1.0:
-            image = image.astype(np.float32) / 255.0
-            
-        # 转换为3通道图像
-        if len(image.shape) == 2:
-            image = np.repeat(image[:, :, np.newaxis], 3, axis=2)
-        elif len(image.shape) == 3 and image.shape[2] == 1:
-            image = np.repeat(image, 3, axis=2)
-            
-        # 调整大小到1024x1024（MedSAM的输入尺寸）
-        img_1024 = transform.resize(
-            image, (1024, 1024), order=3, preserve_range=True, anti_aliasing=True
-        )
-        
-        # 标准化
-        img_1024 = (img_1024 - img_1024.min()) / np.clip(
-            img_1024.max() - img_1024.min(), a_min=1e-8, a_max=None
-        )  # normalize to [0, 1]
-        
-        # 转换为PyTorch张量
-        img_1024_tensor = torch.tensor(img_1024).float().permute(2, 0, 1).unsqueeze(0)
-        img_1024_tensor = img_1024_tensor.to(self.device)
-        
-        # 计算嵌入
-        with torch.no_grad():
-            self.image_embedding = self.medsam_model.image_encoder(img_1024_tensor)
-            
-        print(f"图像嵌入计算完成，形状: {self.image_embedding.shape}")
-        return True
-        
-    def segment_with_medsam(self, image, points=None, point_labels=None, box=None):
-        """使用MedSAM进行分割"""
-        if not hasattr(self, 'medsam_model'):
-            raise ValueError("需要先设置MedSAM模型")
-            
-        if not hasattr(self, 'image_embedding'):
-            print("计算图像嵌入...")
-            self.compute_image_embedding(image)
-        
-        H, W = image.shape[:2]
-        
-        # 处理框提示（如果有）
-        if box is not None:
-            # 将框坐标调整为1024x1024比例
-            box_1024 = np.array(box) / np.array([W, H, W, H]) * 1024
-            box_torch = torch.as_tensor(box_1024, dtype=torch.float, device=self.device)
-            if len(box_torch.shape) == 1:
-                box_torch = box_torch.unsqueeze(0)  # 添加批次维度
-        else:
-            box_torch = None
-            
-        # 处理点提示（如果有）
-        if points is not None and point_labels is not None:
-            # 将点坐标调整为1024x1024比例
-            points_1024 = np.array(points) / np.array([W, H]) * 1024
-            points_torch = torch.as_tensor(points_1024, dtype=torch.float, device=self.device)
-            if len(points_torch.shape) == 2:
-                points_torch = points_torch.unsqueeze(0)  # 添加批次维度
-                
-            point_labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=self.device)
-            if len(point_labels_torch.shape) == 1:
-                point_labels_torch = point_labels_torch.unsqueeze(0)  # 添加批次维度
-        else:
-            points_torch = None
-            point_labels_torch = None
-            
-        print(f"分割提示 - 点: {points}, 标签: {point_labels}, 框: {box}")
-        
-        # 使用提示编码器
-        with torch.no_grad():
-            sparse_embeddings, dense_embeddings = self.medsam_model.prompt_encoder(
-                points=points_torch,
-                boxes=box_torch,
-                masks=None,
-            )
-            
-            # 解码掩码
-            low_res_logits, _ = self.medsam_model.mask_decoder(
-                image_embeddings=self.image_embedding,
-                image_pe=self.medsam_model.prompt_encoder.get_dense_pe(),
-                sparse_prompt_embeddings=sparse_embeddings,
-                dense_prompt_embeddings=dense_embeddings,
-                multimask_output=False,
-            )
-            
-            # 将低分辨率掩码调整到原始图像大小
-            low_res_pred = torch.sigmoid(low_res_logits)
-            low_res_pred = F.interpolate(
-                low_res_pred,
-                size=(H, W),
-                mode="bilinear",
-                align_corners=False,
-            )
-            
-            # 转换为numpy掩码
-            mask = low_res_pred.squeeze().cpu().numpy()
-            mask = (mask > 0.5).astype(np.uint8)
-            
-        return mask
 
 
 def list_available_models() -> dict:
@@ -497,19 +201,7 @@ def list_available_models() -> dict:
         'medsam': {
             'description': 'Medical SAM 模型 (基于SAM的医学图像分割)',
             'weights_path': 'weights/MedSAM/medsam_vit_b.pth',
-            'class': MedSamSegmenter
-        },
-        'deeplabv3_resnet50': {
-            'description': 'DeepLabV3 ResNet50 模型 (语义分割)',
-            'weights_path': 'weights/DeeplabV3/best_deeplabv3_resnet50_voc_os16.pth',
-            'class': DeepLabV3Segmenter,
-            'backbone': 'resnet50'
-        },
-        'deeplabv3_resnet101': {
-            'description': 'DeepLabV3 ResNet101 模型 (语义分割)',
-            'weights_path': 'weights/DeeplabV3/best_deeplabv3_resnet101_voc_os16.pth',
-            'class': DeepLabV3Segmenter,
-            'backbone': 'resnet101'
+            'class': MedSAMSegmenter
         }
     }
     
@@ -520,44 +212,4 @@ def list_available_models() -> dict:
         else:
             info['status'] = '未安装'
     
-    return models
-
-
-def get_model_weights_path(model_type: str) -> str:
-    """
-    获取指定模型类型的权重文件路径
-    
-    参数:
-        model_type: 模型类型 ('medsam' 或 'deeplabv3')
-        
-    返回:
-        str: 权重文件路径
-    """
-    models = list_available_models()
-    
-    if model_type in models:
-        return models[model_type]['weights_path']
-    else:
-        raise ValueError(f"不支持的模型类型: {model_type}")
-
-
-# 使用示例
-if __name__ == "__main__":
-    # 创建处理器实例
-    processor = MedicalImageProcessor()
-    
-    # 列出可用模型
-    print("可用的分割模型:")
-    for name, info in list_available_models().items():
-        print(f"- {name}: {info['description']} ({info['status']})")
-    
-    # 加载图像示例（取消注释使用）
-    # processor.load_image("path/to/image.nii")
-    # processor.display_image()
-    
-    # 设置分割模型示例（取消注释使用）
-    # processor.set_segmentation_model("medsam", checkpoint_path="weights/MedSAM/medsam_vit_b.pth")
-    
-    # 分割图像示例（取消注释使用）
-    # mask = processor.segment_image(points=[[100, 100]], point_labels=[1])
-    # processor.display_segmentation_result(mask) 
+    return models 
