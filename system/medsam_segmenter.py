@@ -174,7 +174,7 @@ class MedSAMSegmenter:
         with torch.no_grad():
             # 获取提示编码
             sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
-                points=points_torch,
+                points=(points_torch, labels_torch) if points_torch is not None else None,
                 boxes=box_torch,
                 masks=None,
             )
