@@ -15,27 +15,35 @@ import matplotlib.patches as mpatches
 import matplotlib.font_manager as fm
 import matplotlib.colors as mcolors
 import traceback  # 添加traceback模块导入
+import logging
 
 # 设置中文字体
 matplotlib.rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'sans-serif']
 
-# 添加项目根目录到 Python 路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 添加项目根目录到 Python 路径 - 使用绝对路径
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
-# 在文件开头添加
-os.environ['TORCH_HOME'] = './weights'  # 设置自定义缓存目录
-os.environ['PYTORCH_NO_DOWNLOAD'] = '1'  # 尝试禁用自动下载
+# 设置权重目录 - 使用绝对路径
+WEIGHTS_DIR = os.path.join(ROOT_DIR, 'weights')
+os.environ['TORCH_HOME'] = WEIGHTS_DIR
+os.environ['PYTORCH_NO_DOWNLOAD'] = '1'
 
-# 导入我们的医学图像处理类
-from system.medical_image_utils import MedicalImageProcessor, list_available_models
+# 智能导入 - 处理直接运行和作为包导入的情况
+try:
+    # 先尝试相对导入 (当作为包的一部分导入时可以工作)
+    from .medical_image_utils import MedicalImageProcessor, list_available_models
+    from .vtk_3d_viewer import VTK3DViewer
+except ImportError:
+    # 相对导入失败时，回退到绝对导入 (直接运行脚本时使用)
+    from system.medical_viewer.medical_image_utils import MedicalImageProcessor, list_available_models
+    from system.medical_viewer.vtk_3d_viewer import VTK3DViewer
 
 # 获取当前文件所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# 将当前目录添加到Python路径
 if current_dir not in sys.path:
     sys.path.append(current_dir)
-# 现在可以直接导入同级目录下的模块
-from vtk_3d_viewer import VTK3DViewer
 
 # 添加辅助函数
 def normalize_box(box, shape):
@@ -849,7 +857,7 @@ class MedicalImageApp(QMainWindow):
         options = QFileDialog.Options()
         file_path, _ = QFileDialog.getOpenFileName(
             self, "打开医学图像", "", 
-            "医学图像 (*.nii *.nii.gz *.dcm *.png *.jpg *.tif);;所有文件 (*)", 
+            "医学图像 (*.mha *.nii *.nii.gz *.dcm *.png *.jpg *.tif);;所有文件 (*)", 
             options=options
         )
         

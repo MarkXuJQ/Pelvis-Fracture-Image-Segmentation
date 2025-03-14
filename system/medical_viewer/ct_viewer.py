@@ -2,6 +2,7 @@ import sys
 import os
 from PyQt5 import uic
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSlider, QMessageBox, QPushButton, QInputDialog, QProgressBar, QLabel
+from PyQt5.QtCore import Qt
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import SimpleITK as sitk
 import numpy as np
@@ -17,7 +18,7 @@ import vtkmodules.vtkInteractionStyle
 import vtkmodules.vtkRenderingOpenGL2
 from utils.file_upload import FileUploader
 from datetime import datetime
-from db_manager import get_connection
+from system.database.db_manager import get_connection
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from utils.progress_dialog import UploadProgressDialog
 
@@ -61,11 +62,9 @@ class CTViewer(QWidget):
         self.patient_id = patient_id
         self.sitk_image = sitk_image
         
-        # 加载 UI
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        ui_file = os.path.join(current_dir, "ui", "ct_viewer.ui")
-        uic.loadUi(ui_file, self)
-
+        # 重要: 在加载UI前不要设置任何布局
+        self.setup_ui()
+        
         # 初始化 VTK 相关
         self.image_data = self.sitk_to_vtk_image(sitk_image)
         self.reslice_cursor = vtkResliceCursor()
@@ -76,54 +75,175 @@ class CTViewer(QWidget):
         self.reslice_representations = []
         self.file_uploader = FileUploader()
 
+        # 设置滑块和3D视图
         self.setup_sliders()
-        self.Generate_Model.clicked.connect(self.generate_model)
-        self.Back.clicked.connect(self.back_to_MainWindow)
-        # Setup views using the widgets from UI file
+        self.setup_buttons()
         self.setup_reslice_views()
         self.synchronize_views()
         self.setup_model_view()
+        
+        # 如果需要渲染3D模型
         if self.render_model:
             self.generate_and_display_model()
 
-        # Add mouse interaction states
+        # 添加鼠标交互状态
         self.is_panning = False
         self.last_mouse_pos = None
         self.zoom_factor = 1.0
         self.window_level = None
         self.window_width = None
 
-        # Setup mouse interaction for all views
+        # 设置所有视图的鼠标交互
         self.setup_mouse_interaction()
 
         # 添加上传按钮
-        self.upload_button = QPushButton("上传CT图像", self)
-        self.upload_button.clicked.connect(self.upload_ct_image)
+        self.setup_upload_button()
         
         # 移除之前的进度条和状态标签
         self.progress_dialog = None
 
-        # 将按钮添加到布局
-        if hasattr(self, 'layout'):
-            self.layout().addWidget(self.upload_button)
-        else:
-            layout = QVBoxLayout()
-            layout.addWidget(self.upload_button)
-            self.setLayout(layout)
+    def setup_ui(self):
+        """加载UI文件"""
+        try:
+            # 获取当前脚本所在目录
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.dirname(os.path.dirname(current_dir))  # 上两级目录
+            
+            # 尝试多个可能的UI文件路径
+            ui_paths = [
+                os.path.join(current_dir, "ui", "ct_viewer.ui"),     # 脚本同级ui目录
+                os.path.join(base_dir, "ui", "ct_viewer.ui"),        # 系统根目录下的ui
+                os.path.join(os.getcwd(), "ui", "ct_viewer.ui"),     # 当前工作目录下的ui
+                os.path.join(os.getcwd(), "system", "ui", "ct_viewer.ui"),  # system/ui下
+                "d:\\pelvis\\system\\ui\\ct_viewer.ui"               # 硬编码路径(从日志看出)
+            ]
+            
+            ui_file = None
+            for path in ui_paths:
+                if os.path.exists(path):
+                    ui_file = path
+                    break
+            
+            if ui_file:
+                print(f"加载UI文件: {ui_file}")
+                uic.loadUi(ui_file, self)
+                print(f"已成功加载UI文件: {ui_file}")
+            else:
+                QMessageBox.warning(self, "警告", "找不到UI文件，使用默认布局")
+                self.create_default_ui()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"加载UI文件失败: {str(e)}")
+            self.create_default_ui()
 
-    def back_to_MainWindow(self):
-        """返回到主窗口"""
-        # 在这里动态导入，避免循环导入
-        from image_viewer_window import MedicalImageViewer
-        if hasattr(self, 'medical_image_viewer'):
-            return self.medical_image_viewer
-        else:
-            self.medical_image_viewer = MedicalImageViewer(self.patient_id)
-            return self.medical_image_viewer
+    def create_default_ui(self):
+        """创建默认UI"""
+        print("创建默认UI布局")
+        main_layout = QHBoxLayout(self)
+        
+        # 左侧控制面板
+        controls_layout = QVBoxLayout()
+        self.Generate_Model = QPushButton("生成3D模型", self)
+        self.Generate_Model.setObjectName("Generate_Model")
+        controls_layout.addWidget(self.Generate_Model)
+        
+        self.Back = QPushButton("返回", self)
+        self.Back.setObjectName("Back")
+        controls_layout.addWidget(self.Back)
+        
+        main_layout.addLayout(controls_layout, 1)
+        
+        # 视图布局
+        views_layout = QGridLayout()
+        
+        # 创建轴向视图容器
+        axial_container = QWidget()
+        axial_layout = QVBoxLayout(axial_container)
+        axial_label = QLabel("轴向视图")
+        self.vtkWidget_axial = QVTKRenderWindowInteractor(axial_container)
+        self.vtkWidget_axial.setObjectName("vtkWidget_axial")
+        self.axial_slider = QSlider(Qt.Horizontal)
+        self.axial_slider.setObjectName("axial_slider")
+        axial_layout.addWidget(axial_label)
+        axial_layout.addWidget(self.vtkWidget_axial)
+        axial_layout.addWidget(self.axial_slider)
+        
+        # 创建冠状视图容器
+        coronal_container = QWidget()
+        coronal_layout = QVBoxLayout(coronal_container)
+        coronal_label = QLabel("冠状视图")
+        self.vtkWidget_coronal = QVTKRenderWindowInteractor(coronal_container)
+        self.vtkWidget_coronal.setObjectName("vtkWidget_coronal")
+        self.coronal_slider = QSlider(Qt.Horizontal)
+        self.coronal_slider.setObjectName("coronal_slider")
+        coronal_layout.addWidget(coronal_label)
+        coronal_layout.addWidget(self.vtkWidget_coronal)
+        coronal_layout.addWidget(self.coronal_slider)
+        
+        # 创建矢状视图容器
+        sagittal_container = QWidget()
+        sagittal_layout = QVBoxLayout(sagittal_container)
+        sagittal_label = QLabel("矢状视图")
+        self.vtkWidget_sagittal = QVTKRenderWindowInteractor(sagittal_container)
+        self.vtkWidget_sagittal.setObjectName("vtkWidget_sagittal")
+        self.sagittal_slider = QSlider(Qt.Horizontal)
+        self.sagittal_slider.setObjectName("sagittal_slider")
+        sagittal_layout.addWidget(sagittal_label)
+        sagittal_layout.addWidget(self.vtkWidget_sagittal)
+        sagittal_layout.addWidget(self.sagittal_slider)
+        
+        # 创建3D模型视图容器
+        model_container = QWidget()
+        model_layout = QVBoxLayout(model_container)
+        model_label = QLabel("3D模型")
+        self.model_vtkWidget = QVTKRenderWindowInteractor(model_container)
+        self.model_vtkWidget.setObjectName("model_vtkWidget")
+        model_layout.addWidget(model_label)
+        model_layout.addWidget(self.model_vtkWidget)
+        
+        # 添加到网格布局
+        views_layout.addWidget(axial_container, 0, 0)
+        views_layout.addWidget(model_container, 0, 1)
+        views_layout.addWidget(coronal_container, 1, 0)
+        views_layout.addWidget(sagittal_container, 1, 1)
+        
+        main_layout.addLayout(views_layout, 4)
+        self.setLayout(main_layout)
 
-    def generate_model(self):
-        self.render_model = True
-        self.generate_and_display_model()
+    def setup_buttons(self):
+        """设置按钮连接"""
+        # 查找并连接生成模型按钮
+        generate_model_btn = self.findChild(QPushButton, 'Generate_Model')
+        if generate_model_btn:
+            generate_model_btn.clicked.connect(self.generate_model)
+        
+        # 查找并连接返回按钮
+        back_btn = self.findChild(QPushButton, 'Back')
+        if back_btn:
+            back_btn.clicked.connect(self.back_to_MainWindow)
+
+    def setup_upload_button(self):
+        """设置上传按钮"""
+        self.upload_button = QPushButton("上传CT图像", self)
+        self.upload_button.clicked.connect(self.upload_ct_image)
+        
+        # 尝试找到现有布局并添加按钮
+        if hasattr(self, 'verticalLayout') and self.verticalLayout:
+            self.verticalLayout.addWidget(self.upload_button)
+        elif hasattr(self, 'layout') and self.layout():
+            # 找到最左侧的垂直布局
+            left_layout = None
+            layout = self.layout()
+            
+            # 如果是水平布局，尝试获取第一个子布局
+            if isinstance(layout, QHBoxLayout) and layout.count() > 0:
+                item = layout.itemAt(0)
+                if item and item.layout():
+                    left_layout = item.layout()
+            
+            if left_layout:
+                left_layout.addWidget(self.upload_button)
+            else:
+                layout.addWidget(self.upload_button)
 
     def setup_reslice_views(self):
         # Initialize VTK widgets
@@ -464,10 +584,18 @@ class CTViewer(QWidget):
             
             if success:
                 image_name = f"CT_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mha"
-                self._save_to_database(image_name, message, 'CT')
+                # 打印上传路径用于调试
+                print(f"文件上传成功，路径为: {message}")
+                # 存储数据库记录前确认路径格式
+                db_path = message
+                # 如果是Windows路径格式，转换为统一格式
+                if '\\' in db_path:
+                    db_path = db_path.replace('\\', '/')
+                
+                self._save_to_database(image_name, db_path, 'CT')
                 if self.progress_dialog:
                     self.progress_dialog.close()
-                QMessageBox.information(self, "成功", f"CT图像上传成功！\n病人ID: {self.patient_id}")
+                QMessageBox.information(self, "成功", f"CT图像上传成功！\n病人ID: {self.patient_id}\n保存路径: {db_path}")
             else:
                 if self.progress_dialog:
                     self.progress_dialog.close()
@@ -504,13 +632,29 @@ class CTViewer(QWidget):
             cursor.close()
             connection.close()
 
-
-# Main execution of the application
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-
-    image_path = r"ct_seg\data\PENGWIN_CT_train_images\001.mha"  # Path to medical image file
-    sitk_image = sitk.ReadImage(image_path)  # Read the image using SimpleITK
-    viewer = CTViewer(sitk_image)  # Create an instance of the viewer with the image
-    viewer.show()  # Display the viewer window
-    sys.exit(app.exec_())  # Execute the application
+    def generate_model(self):
+        """生成3D模型"""
+        self.render_model = True
+        self.generate_and_display_model()
+        
+    def back_to_MainWindow(self):
+        """返回到主窗口"""
+        # 在这里动态导入，避免循环导入
+        try:
+            from image_viewer_window import MedicalImageViewer
+            if hasattr(self, 'medical_image_viewer'):
+                return self.medical_image_viewer
+            else:
+                self.medical_image_viewer = MedicalImageViewer(self.patient_id)
+                return self.medical_image_viewer
+        except ImportError:
+            try:
+                from system.image_viewer_window import MedicalImageViewer
+                if hasattr(self, 'medical_image_viewer'):
+                    return self.medical_image_viewer
+                else:
+                    self.medical_image_viewer = MedicalImageViewer(self.patient_id)
+                    return self.medical_image_viewer
+            except ImportError:
+                QMessageBox.warning(self, "警告", "无法返回主窗口，找不到相关模块")
+                return None

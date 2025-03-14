@@ -7,7 +7,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
 import pymysql
-from db_config import db_config
+from system.database.db_config import db_config
 
 def inspect_database():
     try:

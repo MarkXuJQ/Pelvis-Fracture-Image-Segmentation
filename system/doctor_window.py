@@ -4,12 +4,12 @@ import pandas as pd
 from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 
-from image_viewer_window import MedicalImageViewer
+from system.medical_viewer.image_viewer_window import MedicalImageViewer
 from system.delegate import TaskItemDelegate
 from system.fracture_edit import FractureHistoryDialog
 from system.stylesheet import apply_stylesheet
-from xray_viewer import XRayViewer
-from ct_viewer import CTViewer
+from system.medical_viewer.xray_viewer import XRayViewer
+from system.medical_viewer.ct_viewer import CTViewer
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QHeaderView, QListWidgetItem, QFileDialog, \
@@ -19,7 +19,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from chat_window import ChatApp
 from settings_dialog import SettingsDialog
-from db_config import db_config
+from system.database.db_config import db_config
 
 # 创建数据库连接
 engine = create_engine(

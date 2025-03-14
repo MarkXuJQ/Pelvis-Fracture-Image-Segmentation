@@ -1,3 +1,7 @@
+"""
+DeepLabV3+ 分割模型实现
+"""
+
 import os
 import torch
 import torch.nn as nn
@@ -6,6 +10,7 @@ import numpy as np
 from torchvision import transforms
 from typing import Union, Tuple, Optional, List
 import math
+import torchvision.models.segmentation as segmentation
 
 # 自定义DeepLabV3模型架构，与保存的权重匹配
 class ResBlock(nn.Module):
@@ -260,42 +265,68 @@ class CustomDeepLabV3_3D(nn.Module):
         return {'out': x}
 
 class DeeplabV3Segmenter:
-    """DeepLabV3 3D分割器"""
+    """DeepLabV3+ 分割模型"""
     
-    def __init__(self, checkpoint_path, device=None):
-        """
-        初始化DeepLabV3分割器
+    def __init__(self, model_path=None):
+        """初始化DeepLabV3+分割器"""
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {self.device}")
         
-        参数:
-            checkpoint_path: 权重文件路径
-            device: 计算设备 ('cpu' 或 'cuda')
-        """
-        # 设置设备
-        self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"DeepLabV3使用设备: {self.device}")
+        # 加载预训练的DeepLabV3+模型
+        self.model = segmentation.deeplabv3_resnet101(pretrained=False, num_classes=2)
         
-        # 加载模型
-        self.model = self._load_model(checkpoint_path)
+        if model_path and os.path.exists(model_path):
+            self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        else:
+            print("Warning: No model path provided or file doesn't exist. Using untrained model.")
+            
         self.model.to(self.device)
         self.model.eval()
-    
-    def _load_model(self, checkpoint_path):
-        """加载DeepLabV3模型及权重"""
-        if not os.path.exists(checkpoint_path):
-            raise FileNotFoundError(f"权重文件未找到: {checkpoint_path}")
         
-        # 创建DeepLabV3 3D模型
-        model = CustomDeepLabV3_3D(num_classes=1, input_channels=1)
+        # 图像预处理
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
         
-        # 加载权重
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-        if 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'], strict=False)
-        else:
-            model.load_state_dict(checkpoint, strict=False)
+    def segment(self, image):
+        """
+        使用DeepLabV3+进行图像分割
+        
+        参数:
+            image: 输入图像，2D或3D numpy数组
             
-        return model
-    
+        返回:
+            mask: 分割掩码
+        """
+        # 转换为3通道图像
+        if len(image.shape) == 2:
+            image_rgb = np.stack([image, image, image], axis=2)
+        elif len(image.shape) == 3 and image.shape[2] == 1:
+            image_rgb = np.repeat(image, 3, axis=2)
+        elif len(image.shape) == 3 and image.shape[2] == 3:
+            image_rgb = image
+        else:
+            raise ValueError(f"Unsupported image shape: {image.shape}")
+            
+        # 确保图像数据在0-1范围内
+        if image_rgb.max() > 1.0:
+            image_rgb = image_rgb / 255.0
+            
+        # 预处理图像
+        input_tensor = self.transform(image_rgb.astype(np.float32))
+        input_batch = input_tensor.unsqueeze(0).to(self.device)
+        
+        # 进行预测
+        with torch.no_grad():
+            output = self.model(input_batch)['out']
+            output = F.softmax(output, dim=1)
+            
+        # 获取前景掩码
+        mask = output[0, 1].cpu().numpy()
+        
+        return mask
+
     def preprocess_volume(self, volume):
         """预处理输入体积"""
         # 确保是浮点数类型
@@ -314,48 +345,6 @@ class DeeplabV3Segmenter:
             volume_tensor = volume_tensor.unsqueeze(0).unsqueeze(0)
             
         return volume_tensor.to(self.device)
-    
-    def segment(self, image, points=None, point_labels=None, box=None):
-        """
-        执行2D分割 (针对单个切片)
-        
-        参数:
-            image: 输入图像(numpy数组)
-            points: 点提示(忽略)
-            point_labels: 点标签(忽略)
-            box: 感兴趣区域(可选)
-            
-        返回:
-            二值掩码(numpy数组)
-        """
-        # 为单个切片创建伪3D体积
-        pseudo_volume = np.expand_dims(image, axis=0)
-        
-        if box is not None:
-            x1, y1, x2, y2 = [int(round(coord)) for coord in box]
-            x1, x2 = max(0, x1), min(image.shape[1], x2)
-            y1, y2 = max(0, y1), min(image.shape[0], y2)
-            pseudo_volume = np.expand_dims(image[y1:y2, x1:x2], axis=0)
-        
-        # 预处理
-        volume_tensor = self.preprocess_volume(pseudo_volume)
-        
-        # 分割
-        with torch.no_grad():
-            output = self.model(volume_tensor)['out']
-            
-            # 阈值处理
-            pred_mask = (output > 0).squeeze().cpu().numpy()
-        
-        # 如果使用了边界框，恢复完整大小
-        if box is not None:
-            full_mask = np.zeros_like(image, dtype=bool)
-            full_mask[y1:y2, x1:x2] = pred_mask[0]  # 使用第一个(唯一的)切片
-            pred_mask = full_mask
-        else:
-            pred_mask = pred_mask[0]  # 使用第一个(唯一的)切片
-            
-        return pred_mask
     
     def segment_3d(self, volume, axis=0):
         """

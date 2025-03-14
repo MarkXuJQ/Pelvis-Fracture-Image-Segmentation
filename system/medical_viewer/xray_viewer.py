@@ -11,7 +11,7 @@ import os
 import SimpleITK as sitk
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from utils.progress_dialog import UploadProgressDialog
-from db_manager import get_connection
+from system.database.db_manager import get_connection
 from PyQt5.QtGui import QImage, QPixmap
 
 class UploadThread(QThread):

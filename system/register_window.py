@@ -2,7 +2,7 @@ import os
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
 from PyQt5 import uic
-from system.db_manager import register_user  # 假设你已经在 db_manager.py 中实现了注册函数
+from system.database.db_manager import register_user  # 假设你已经在 db_manager.py 中实现了注册函数
 
 
 class RegisterWindow(QMainWindow):

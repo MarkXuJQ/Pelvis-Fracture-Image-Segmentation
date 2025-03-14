@@ -7,7 +7,7 @@ from PyQt5.QtCore import Qt
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from db_config import db_config
+from system.database.db_config import db_config
 from system.stylesheet import apply_stylesheet
 
 # 创建数据库连接

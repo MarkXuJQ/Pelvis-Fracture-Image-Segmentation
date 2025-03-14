@@ -14,8 +14,8 @@ from vtk.util import numpy_support
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 导入分割模型
-from system.medsam_segmenter import MedSAMSegmenter
-from system.deeplab_segmenter import DeeplabV3Segmenter
+from system.medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
+from system.medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
 
 class MedicalImageProcessor:
     """医学图像处理类，提供加载、显示和基础处理功能"""
@@ -308,32 +308,30 @@ class MedicalImageProcessor:
             print(f"保存掩码时出错: {str(e)}")
             return False
     
-    def set_segmentation_model(self, model_name, checkpoint_path):
-        """
-        设置分割模型
-        
-        参数:
-            model_name: 模型类型 ('medsam', 'deeplabv3')
-            checkpoint_path: 权重文件路径
-        """
+    def set_segmentation_model(self, model_name, **kwargs):
+        """设置分割模型"""
         if model_name == 'medsam':
+            from system.medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
+            model_type = kwargs.get('model_type', 'vit_b')
+            checkpoint_path = kwargs.get('checkpoint_path', os.path.join('weights', 'MedSAM', 'medsam_vit_b.pth'))
+            
             self.segmenter = MedSAMSegmenter(
-                model_type='vit_b',
+                model_type=model_type,
                 checkpoint_path=checkpoint_path,
-                device='cuda' if torch.cuda.is_available() else 'cpu'
+                device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
             )
-            print(f"MedSAM分割器已设置，权重文件: {checkpoint_path}")
-            return True
         elif model_name == 'deeplabv3':
-            self.segmenter = DeeplabV3Segmenter(
-                checkpoint_path=checkpoint_path,
-                device='cuda' if torch.cuda.is_available() else 'cpu'
-            )
-            print(f"DeepLabV3分割器已设置，权重文件: {checkpoint_path}")
-            return True
+            # 修正导入路径
+            from system.medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
+            
+            # 不传递任何参数，使用默认参数初始化DeeplabV3Segmenter
+            self.segmenter = DeeplabV3Segmenter()
+            
+            # 如果需要设置其他属性，可以在初始化后设置
+            # 例如，如果DeeplabV3Segmenter有device属性:
+            # self.segmenter.device = kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
         else:
-            print(f"不支持的模型类型: {model_name}")
-            return False
+            raise ValueError(f"不支持的模型类型: {model_name}")
 
 
 def list_available_models() -> dict:
