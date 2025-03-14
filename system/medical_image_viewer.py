@@ -5,7 +5,7 @@ import matplotlib
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QLabel, 
                              QPushButton, QVBoxLayout, QHBoxLayout, QWidget, 
                              QComboBox, QSlider, QMessageBox, QGroupBox,
-                             QRadioButton, QButtonGroup, QToolBar, QCheckBox)
+                             QRadioButton, QButtonGroup, QToolBar, QCheckBox, QDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImage, QCursor, QPen, QBrush, QColor, QPainter
 import matplotlib.pyplot as plt
@@ -28,6 +28,14 @@ os.environ['PYTORCH_NO_DOWNLOAD'] = '1'  # 尝试禁用自动下载
 
 # 导入我们的医学图像处理类
 from system.medical_image_utils import MedicalImageProcessor, list_available_models
+
+# 获取当前文件所在目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 将当前目录添加到Python路径
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+# 现在可以直接导入同级目录下的模块
+from vtk_3d_viewer import VTK3DViewer
 
 # 添加辅助函数
 def normalize_box(box, shape):
@@ -607,6 +615,12 @@ class MedicalImageApp(QMainWindow):
         # 初始检查模型选择
         self.on_model_changed(self.model_selector.currentIndex())
         
+        # 添加3D查看按钮
+        self.view_3d_btn = QPushButton("3D查看")
+        self.view_3d_btn.setEnabled(False)
+        self.view_3d_btn.clicked.connect(self.show_3d_view)
+        control_layout.addWidget(self.view_3d_btn)
+        
     def clear_points(self):
         """清除所有点提示"""
         self.points = []
@@ -622,8 +636,9 @@ class MedicalImageApp(QMainWindow):
         selected_text = self.model_selector.currentText()
         model_name = selected_text.split(':')[0]
         
-        # 如果选择的是MedSAM模型，显示点提示控件
-        self.prompt_group.setVisible(model_name == 'medsam')
+        # 根据模型类型显示相应控件
+        is_medsam = model_name == 'medsam'
+        self.prompt_group.setVisible(is_medsam)
         
         # 清除当前的点提示和框
         self.clear_points()
@@ -902,6 +917,9 @@ class MedicalImageApp(QMainWindow):
             selected_model = self.model_selector.currentText().split(':')[0]
             self.prompt_group.setVisible(selected_model == 'medsam')
             
+            # 更新3D查看按钮状态
+            self.view_3d_btn.setEnabled(self.processor.is_3d and self.mask is not None)
+            
         except Exception as e:
             QMessageBox.critical(self, "错误", f"无法加载图像: {str(e)}")
             traceback.print_exc()
@@ -1025,14 +1043,10 @@ class MedicalImageApp(QMainWindow):
         self.update_display()
     
     def segment_image(self):
-        """使用MedSAM模型分割图像"""
+        """使用选定的模型分割图像"""
         # 获取当前选择的模型
         selected_model = self.model_selector.currentText().split(':')[0]
         
-        if selected_model != 'medsam':
-            QMessageBox.warning(self, "提示", "请选择MedSAM模型进行分割")
-            return
-            
         # 检查是否有图像
         if not hasattr(self, 'processor') or self.processor.image_data is None:
             QMessageBox.warning(self, "提示", "请先加载图像")
@@ -1040,9 +1054,14 @@ class MedicalImageApp(QMainWindow):
             
         # 设置模型
         try:
+            model_info = self.available_models.get(selected_model)
+            if not model_info:
+                QMessageBox.warning(self, "提示", f"未找到模型: {selected_model}")
+                return
+                
             self.processor.set_segmentation_model(
-                model_name='medsam',
-                checkpoint_path=self.available_models['medsam']['weights_path']
+                model_name=selected_model,
+                checkpoint_path=model_info['weights_path']
             )
             
             # 准备点提示和框提示
@@ -1059,6 +1078,30 @@ class MedicalImageApp(QMainWindow):
             
             # 获取当前视图的2D切片
             if self.processor.is_3d:
+                if selected_model == 'deeplabv3' and model_info.get('is_3d_capable', False):
+                    # 使用DeepLabV3的3D分割能力
+                    QMessageBox.information(self, "处理中", "正在执行3D分割，这可能需要一些时间...")
+                    QApplication.processEvents()  # 更新UI
+                    
+                    # 执行3D分割
+                    if self.current_view == 'axial':
+                        self.mask = self.processor.segmenter.segment_3d(self.processor.image_data, axis=0)
+                    elif self.current_view == 'coronal':
+                        self.mask = self.processor.segmenter.segment_3d(self.processor.image_data, axis=1)
+                    elif self.current_view == 'sagittal':
+                        self.mask = self.processor.segmenter.segment_3d(self.processor.image_data, axis=2)
+                    
+                    self.box_masks = [self.mask]  # 单个掩码
+                    
+                    # 更新显示
+                    self.update_display()
+                    
+                    # 启用3D查看按钮
+                    self.view_3d_btn.setEnabled(True)
+                    
+                    return
+                
+                # 常规2D切片处理
                 if self.current_view == 'axial':
                     current_slice = self.processor.image_data[self.axial_slice]
                 elif self.current_view == 'coronal':
@@ -1077,7 +1120,7 @@ class MedicalImageApp(QMainWindow):
             else:
                 image_to_segment = self.processor.image_data
             
-            # 对2D图像进行分割
+            # 对图像进行分割
             if boxes_array is not None and len(boxes_array) > 0:
                 combined_mask = np.zeros_like(image_to_segment, dtype=bool)
                 for i, box in enumerate(boxes_array):
@@ -1092,8 +1135,8 @@ class MedicalImageApp(QMainWindow):
                     combined_mask = np.logical_or(combined_mask, mask)
                 self.mask = combined_mask
             else:
-                # 只使用点提示
-                print("使用点提示进行分割")
+                # 只使用点提示(对于DeepLabV3会忽略点提示)
+                print(f"使用{selected_model}模型进行分割")
                 self.mask = self.processor.segmenter.segment(
                     image_to_segment,  # 使用当前2D切片
                     points=points_array,
@@ -1130,6 +1173,42 @@ class MedicalImageApp(QMainWindow):
             QMessageBox.information(self, "成功", f"分割结果已保存到 {file_path}")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存结果失败: {str(e)}")
+
+    def show_3d_view(self):
+        """显示3D视图"""
+        if not hasattr(self, 'processor') or self.processor.image_data is None or not self.processor.is_3d:
+            QMessageBox.warning(self, "提示", "没有可用的3D数据")
+            return
+        
+        if self.mask is None:
+            QMessageBox.warning(self, "提示", "请先进行3D分割")
+            return
+        
+        # 创建3D查看器对话框
+        self.vtk_dialog = QDialog(self)
+        self.vtk_dialog.setWindowTitle("3D可视化")
+        self.vtk_dialog.setMinimumSize(800, 600)
+        
+        # 创建布局
+        layout = QVBoxLayout(self.vtk_dialog)
+        
+        # 创建3D查看器
+        self.vtk_viewer = VTK3DViewer()
+        layout.addWidget(self.vtk_viewer)
+        
+        # 设置数据
+        self.vtk_viewer.set_volume_data(self.processor.image_data, self.mask)
+        
+        # 添加关闭按钮
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(self.vtk_dialog.close)
+        layout.addWidget(close_btn)
+        
+        # 显示对话框
+        self.vtk_dialog.exec_()
+        
+        # 清理VTK资源
+        self.vtk_viewer.cleanup()
 
 
 if __name__ == "__main__":

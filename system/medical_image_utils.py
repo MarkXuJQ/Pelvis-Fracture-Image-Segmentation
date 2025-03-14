@@ -15,6 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 导入分割模型
 from system.medsam_segmenter import MedSAMSegmenter
+from system.deeplab_segmenter import DeeplabV3Segmenter
 
 class MedicalImageProcessor:
     """医学图像处理类，提供加载、显示和基础处理功能"""
@@ -312,7 +313,7 @@ class MedicalImageProcessor:
         设置分割模型
         
         参数:
-            model_name: 模型类型 ('medsam')
+            model_name: 模型类型 ('medsam', 'deeplabv3')
             checkpoint_path: 权重文件路径
         """
         if model_name == 'medsam':
@@ -322,6 +323,13 @@ class MedicalImageProcessor:
                 device='cuda' if torch.cuda.is_available() else 'cpu'
             )
             print(f"MedSAM分割器已设置，权重文件: {checkpoint_path}")
+            return True
+        elif model_name == 'deeplabv3':
+            self.segmenter = DeeplabV3Segmenter(
+                checkpoint_path=checkpoint_path,
+                device='cuda' if torch.cuda.is_available() else 'cpu'
+            )
+            print(f"DeepLabV3分割器已设置，权重文件: {checkpoint_path}")
             return True
         else:
             print(f"不支持的模型类型: {model_name}")
@@ -340,6 +348,12 @@ def list_available_models() -> dict:
             'description': 'Medical SAM 模型 (基于SAM的医学图像分割)',
             'weights_path': 'weights/MedSAM/medsam_vit_b.pth',
             'class': MedSAMSegmenter
+        },
+        'deeplabv3': {
+            'description': 'DeepLabV3 模型 (3D医学图像分割)',
+            'weights_path': 'weights/DeeplabV3/DeeplabV3_best_model.pth',
+            'class': DeeplabV3Segmenter,
+            'is_3d_capable': True
         }
     }
     
