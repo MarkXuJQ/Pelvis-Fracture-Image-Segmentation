@@ -4,8 +4,8 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QMainWindow, QAction, QFileDialog, QMessageBox, QToolBar, QTableWidget, QCheckBox, \
     QTableWidgetItem, QHeaderView, QPushButton, QListWidget, QLabel, QLineEdit, QComboBox
 
-from xray_viewer import XRayViewer
-from ct_viewer import CTViewer
+from system.medical_viewer.xray_viewer import XRayViewer
+from system.medical_viewer.ct_viewer import CTViewer
 from patient_manage import PatientManageWindow
 import SimpleITK as sitk
 import os

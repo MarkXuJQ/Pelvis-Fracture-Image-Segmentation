@@ -3,10 +3,10 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QPushButton,
 from PyQt5 import uic
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from db_manager import verify_user
+from system.database.db_manager import verify_user
 import os
 from main_window import MainWindow
-from db_config import db_config
+from system.database.db_config import db_config
 from system.doctor_window import DoctorUI
 from system.patient_window import PatientUI
 

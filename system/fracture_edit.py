@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QDialog, QLabel, QVBoxLayout, QComboBox, QTextEdit, 
 from PyQt5.QtCore import QDate, Qt
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from db_config import db_config
+from system.database.db_config import db_config
 
 # 创建数据库连接
 engine = create_engine(

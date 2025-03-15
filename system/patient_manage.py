@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout,
 import sys
 
 from requests import Session
-from db_manager import patients, fracturehistories
+from system.database.db_manager import patients, fracturehistories
 import sys
 from sqlalchemy import Column, String
 import pyodbc
@@ -22,7 +22,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 import pymysql
 from pymysql import Error
-from db_config import db_config
+from system.database.db_config import db_config
 
 # 创建数据库连接
 engine = create_engine(
