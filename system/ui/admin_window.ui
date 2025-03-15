@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AdminUI</class>
+ <widget class="QMainWindow" name="AdminUI">
+  <property name="geometry">
+   <rect>
+    <x>100</x>
+    <y>100</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>管理员界面</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="mainLayout">
+    <item>
+     <widget class="QSplitter" name="mainSplitter">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <!-- 左侧导航栏 -->
+      <widget class="QFrame" name="leftPanel">
+       <property name="frameShape">
+        <enum>QFrame::StyledPanel</enum>
+       </property>
+       <layout class="QVBoxLayout" name="leftLayout">
+<!--        <item>-->
+<!--         <widget class="QPushButton" name="manageDoctorsButton">-->
+<!--          <property name="text">-->
+<!--           <string>管理医生</string>-->
+<!--          </property>-->
+<!--         </widget>-->
+<!--        </item>-->
+<!--        <item>-->
+<!--         <widget class="QPushButton" name="managePatientsButton">-->
+<!--          <property name="text">-->
+<!--           <string>管理病人</string>-->
+<!--          </property>-->
+<!--         </widget>-->
+<!--        </item>-->
+       </layout>
+      </widget>
+      <!-- 右侧内容 -->
+      <widget class="QSplitter" name="rightSplitter">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <!-- 上部表格区域 -->
+       <widget class="QWidget" name="tableWidgetContainer">
+        <layout class="QVBoxLayout" name="tableLayout">
+         <item>
+          <layout class="QHBoxLayout">
+           <item>
+            <widget class="QLineEdit" name="searchBox">
+             <property name="placeholderText">
+              <string>搜索医生/病人</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="searchButton">
+             <property name="text">
+              <string>搜索</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="resetButton">
+             <property name="text">
+              <string>重置</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="addButton">
+             <property name="text">
+              <string>新增</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QTableWidget" name="tableWidget">
+           <property name="columnCount">
+            <number>6</number>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+<!--           <property name="sizePolicy">-->
+<!--            <sizepolicy hsizetype="Expanding" vsizetype="Expanding"/>-->
+<!--           </property>-->
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="paginationLayout">
+           <item>
+            <widget class="QPushButton" name="firstPageButton">
+             <property name="text">
+              <string>|&lt;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="previousPageButton">
+             <property name="text">
+              <string>&lt;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="pageLabel">
+             <property name="text">
+              <string>1/1</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="nextPageButton">
+             <property name="text">
+              <string>&gt;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="lastPageButton">
+             <property name="text">
+              <string>&gt;|</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+       <!-- 下部详情区域 -->
+       <widget class="QFrame" name="detailsFrame">
+        <layout class="QVBoxLayout" name="detailsLayout">
+         <item>
+          <widget class="QLabel" name="detailsLabel">
+           <property name="text">
+            <string>详情信息将在此处显示</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

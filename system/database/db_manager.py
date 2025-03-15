@@ -15,7 +15,7 @@ class doctors(Base):
     __tablename__ = 'doctors'
     doctor_id = Column(String(20), primary_key=True)
     doctor_name = Column(String(50),nullable=False)
-    doctor_password = Column(String(20),nullable=False)
+    password = Column(String(20),nullable=False)
     phone = Column(String(11))
     specialty = Column(String(50))
 
@@ -36,7 +36,7 @@ class patients(Base):
     age = Column(Integer, nullable=True)
     id_card = Column(String(18), nullable=True)
     patient_name = Column(String(100), nullable=True)
-    password_hash = Column(String(255), nullable=False)
+    password = Column(String(255), nullable=False)
     email = Column(String(100), nullable=True)
 
     # 反向关系，表示一个病人有多个骨折历史
@@ -63,7 +63,7 @@ class Admin(Base):
     __tablename__ = 'admins'
     admin_id = Column(String(20), primary_key=True)
     admin_name = Column(String(50))
-    admin_password = Column(String(20))
+    password = Column(String(20))
     phone = Column(String(11))
 
 class chat_records(Base):
@@ -94,11 +94,11 @@ class chat_records(Base):
         return False, "用户不存在"
 
     if user_type == 'doctor':
-        is_correct_password = user.doctor_password == password
+        is_correct_password = user.password == password
     elif user_type == 'patient':
-        is_correct_password = user.patient_password == password
+        is_correct_password = user.password == password
     else:  # admin
-        is_correct_password = user.admin_password == password
+        is_correct_password = user.password == password
 
     if is_correct_password:
         return True, "登录成功"
@@ -107,11 +107,11 @@ class chat_records(Base):
 '''
 '''def register_user(user_id, name, password, phone, user_type, specialty=None):
     if user_type == 'doctor':
-        new_user = Doctor(doctor_id=user_id, doctor_name=name, doctor_password=password, phone=phone, specialty=specialty)
+        new_user = Doctor(doctor_id=user_id, doctor_name=name, password=password, phone=phone, specialty=specialty)
     elif user_type == 'patient':
-        new_user = Patient(patient_id=user_id, patient_name=name, patient_password=password, phone=phone)
+        new_user = Patient(patient_id=user_id, patient_name=name, password=password, phone=phone)
     elif user_type == 'admin':
-        new_user = Admin(admin_id=user_id, admin_name=name, admin_password=password, phone=phone)
+        new_user = Admin(admin_id=user_id, admin_name=name, password=password, phone=phone)
     else:
         return False, "无效的用户类型"
 '''

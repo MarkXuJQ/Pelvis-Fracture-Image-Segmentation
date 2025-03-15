@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ImageProcessor</class>
+ <widget class="QMainWindow" name="ImageProcessor">
+  <property name="geometry">
+   <rect>
+    <x>100</x>
+    <y>100</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>医学图像处理器</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="mainLayout">
+    <item>
+     <layout class="QHBoxLayout" name="controlsLayout">
+      <item>
+       <widget class="QPushButton" name="open_btn">
+        <property name="text">
+         <string>打开图像</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="model_selector"/>
+      </item>
+      <item>
+       <widget class="QPushButton" name="segment_btn">
+        <property name="text">
+         <string>分割图像</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="save_btn">
+        <property name="text">
+         <string>保存结果</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="displayLayout">
+      <item>
+       <widget class="QGroupBox" name="original_group">
+        <property name="title">
+         <string>原始图像</string>
+        </property>
+        <layout class="QVBoxLayout" name="originalLayout">
+         <item>
+          <widget class="QWidget" name="original_canvas"/>
+         </item>
+         <item>
+          <widget class="QSlider" name="slice_slider">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="result_group">
+        <property name="title">
+         <string>分割结果</string>
+        </property>
+        <layout class="QVBoxLayout" name="resultLayout">
+         <item>
+          <widget class="QWidget" name="result_canvas"/>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <resources/>
+  <connections/>
+ </widget>
+</ui>

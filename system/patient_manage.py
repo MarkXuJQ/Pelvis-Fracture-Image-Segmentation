@@ -142,7 +142,7 @@ class AddPatientDialog(QDialog):
             "contact_phone": contact_phone,
             "id_card": id_number,
             "date_of_birth": birth_date_str,  # 使用合成的出生日期
-            "password_hash": 1234
+            "password": 1234
         }
 
         # 插入新病人信息到数据库
@@ -166,7 +166,7 @@ class AddPatientDialog(QDialog):
                 contact_phone=patient_info["contact_phone"],  # 紧急联系人电话
                 id_card=patient_info["id_card"],
                 date_of_birth=patient_info["date_of_birth"],
-                password_hash=patient_info["password_hash"]
+                password=patient_info["password"]
             )
             session.add(new_patient)
             session.commit()  # 提交事务
@@ -298,7 +298,7 @@ class PatientManageWindow(QMainWindow):
                     "id_card": patient.id_card,
                     "date_of_birth": patient.date_of_birth,
                     "phone_number": patient.phone_number,
-                    "password_hash": patient.password_hash,
+                    "password": patient.password,
                     "contact_person": patient.contact_person,
                     "contact_phone": patient.contact_phone,
 
