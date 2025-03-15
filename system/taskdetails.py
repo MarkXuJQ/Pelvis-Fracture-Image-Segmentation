@@ -4,7 +4,7 @@ from PyQt5.QtCore import Qt, QDateTime, QTimer
 
 
 class TaskDetailsWidget:
-    def __init__(self,parent,item,rightLayout):
+    def __init__(self, parent, item, rightLayout):
         super().__init__()
         self.chat_app = parent
         self.user_id = self.chat_app.sender_id
@@ -90,7 +90,7 @@ class TaskDetailsWidget:
         """通过 Socket 请求任务详情并更新 UI"""
         data = {
             'assigned_doctor_id': self.user_id,
-            'task_title' : self.task_title
+            'task_title': self.task_title
         }
         self.sio.emit('get_task_details', data)  # 发送任务请求
         QTimer.singleShot(1000, self.display)
@@ -154,8 +154,3 @@ class TaskDetailsWidget:
         # 显示拼接好的结果
         self.other_doctors_label.clear()
         self.other_doctors_label.setText(other_doctors_text)
-
-
-
-
-
