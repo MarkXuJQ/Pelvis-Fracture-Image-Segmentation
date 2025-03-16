@@ -155,6 +155,13 @@ def get_connection():
         return None
 
 
+import pymysql
+import logging
+from database.db_manager import get_connection
+
+# 配置日志
+logger = logging.getLogger(__name__)
+
 def verify_user(user_id, password, user_type):
     try:
         connection = get_connection()
@@ -164,21 +171,21 @@ def verify_user(user_id, password, user_type):
 
         cursor = connection.cursor(pymysql.cursors.DictCursor)
 
-        # 根据 user_type 选择正确的 ID 列名
-        id_column_map = {
-            "doctor": "doctor_id",
-            "patient": "patient_id",
-            "admin": "admin_id"
+        # 根据用户类型获取表字段
+        user_table_map = {
+            "doctor": ("doctors", "doctor_id", "password"),
+            "admin": ("admins", "id", "password")
         }
 
-        # 获取正确的 ID 列名
-        id_column = id_column_map.get(user_type.lower())
-        if not id_column:
+        user_table_info = user_table_map.get(user_type.lower())
+        if not user_table_info:
             logger.error(f"Invalid user type: {user_type}")
             return False, "用户类型错误"
 
-        # 生成 SQL 语句
-        query = f"SELECT * FROM {user_type}s WHERE {id_column} = %s AND password = %s"
+        table_name, id_column, password_column = user_table_info
+
+        # 生成 SQL 查询语句
+        query = f"SELECT * FROM {table_name} WHERE {id_column} = %s AND {password_column} = %s"
 
         logger.debug(f"Executing query: {query} with params: {user_id}, {password}")
         cursor.execute(query, (user_id, password))
@@ -199,36 +206,37 @@ def verify_user(user_id, password, user_type):
         return False, "数据库错误"
 
 
-def register_user(user_id, name, password, phone, user_type, specialty=None):
-    try:
-        connection = get_connection()
-        if not connection:
-            return False, "数据库连接失败"
-            
-        cursor = connection.cursor()
-        
-        if user_type == 'doctor':
-            query = """INSERT INTO doctors 
-                    (id, name, password, phone, specialty) 
-                    VALUES (%s, %s, %s, %s, %s)"""
-            values = (user_id, name, password, phone, specialty)
-        else:
-            query = f"""INSERT INTO {user_type}s 
-                    (id, name, password, phone) 
-                    VALUES (%s, %s, %s, %s)"""
-            values = (user_id, name, password, phone)
-            
-        cursor.execute(query, values)
-        connection.commit()
-        
-        cursor.close()
-        connection.close()
-        
-        return True, "注册成功"
-    except Exception as e:
-        if connection:
-            connection.rollback()
-        return False, f"数据库错误: {e}"
+
+# def register_user(user_id, name, password, phone, user_type, specialty=None):
+#     try:
+#         connection = get_connection()
+#         if not connection:
+#             return False, "数据库连接失败"
+#
+#         cursor = connection.cursor()
+#
+#         if user_type == 'doctor':
+#             query = """INSERT INTO doctors
+#                     (id, name, password, phone, specialty)
+#                     VALUES (%s, %s, %s, %s, %s)"""
+#             values = (user_id, name, password, phone, specialty)
+#         else:
+#             query = f"""INSERT INTO {user_type}s
+#                     (id, name, password, phone)
+#                     VALUES (%s, %s, %s, %s)"""
+#             values = (user_id, name, password, phone)
+#
+#         cursor.execute(query, values)
+#         connection.commit()
+#
+#         cursor.close()
+#         connection.close()
+#
+#         return True, "注册成功"
+#     except Exception as e:
+#         if connection:
+#             connection.rollback()
+#         return False, f"数据库错误: {e}"
 
 
 # MySQL 数据库初始化函数
