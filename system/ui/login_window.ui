@@ -10,7 +10,7 @@
     <x>100</x>
     <y>100</y>
     <width>600</width>
-    <height>450</height>
+    <height>400</height>  <!-- 调整窗口高度，避免多余空白 -->
    </rect>
   </property>
   <property name="styleSheet">
@@ -68,7 +68,7 @@
       <property name="sizeHint">
        <size>
         <width>20</width>
-        <height>30</height>
+        <height>20</height>  <!-- 减少顶部空白 -->
        </size>
       </property>
      </spacer>
@@ -108,16 +108,12 @@
      <widget class="QWidget" name="user_type_widget">
       <layout class="QHBoxLayout" name="user_type_layout">
        <item>
-        <widget class="QRadioButton" name="patient_radio">
-         <property name="text">
-          <string>病人</string>
-         </property>
-        </widget>
-       </item>
-       <item>
         <widget class="QRadioButton" name="doctor_radio">
          <property name="text">
           <string>医生</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>  <!-- 默认选中医生 -->
          </property>
         </widget>
        </item>
@@ -139,7 +135,7 @@
       <property name="sizeHint">
        <size>
         <width>20</width>
-        <height>30</height>
+        <height>20</height>  <!-- 减少空白 -->
        </size>
       </property>
      </spacer>
@@ -152,13 +148,6 @@
      </widget>
     </item>
     <item>
-     <widget class="QPushButton" name="register_button">
-      <property name="text">
-       <string>注册</string>
-      </property>
-     </widget>
-    </item>
-    <item>
      <spacer name="bottomSpacer">
       <property name="orientation">
        <enum>Qt::Vertical</enum>
@@ -166,7 +155,7 @@
       <property name="sizeHint">
        <size>
         <width>20</width>
-        <height>30</height>
+        <height>20</height>  <!-- 减少底部空白 -->
        </size>
       </property>
      </spacer>
