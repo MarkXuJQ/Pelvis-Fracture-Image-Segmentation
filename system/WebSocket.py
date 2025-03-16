@@ -6,8 +6,8 @@ import json
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from system.database.db_manager import get_connection
-from system.database.db_config import db_config
+from database.db_manager import get_connection
+from database.db_config import db_config
 import os
 import logging
 
