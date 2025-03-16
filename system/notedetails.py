@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QScrollAr
     QMessageBox
 from PyQt5.QtCore import Qt, QTimer
 from functools import partial
-from system.stylesheet import apply_stylesheet
+from stylesheet import apply_stylesheet
 
 class NoteDetailsWidget(QWidget):
     def __init__(self, parent, item, rightLayout):
@@ -80,7 +80,7 @@ class NoteDetailsWidget(QWidget):
             doctor_frame = QFrame()
             doctor_layout = QVBoxLayout(doctor_frame)
             # 医生名字
-            display_name = "👨‍⚕️ Me" if int(doctor_id) == self.user_id else f"👨‍⚕️ 医生 {doctor_name}"
+            display_name = "👨‍⚕️ Me" if int(doctor_id) == int(self.user_id) else f"👨‍⚕️ 医生 {doctor_name}"
             doctor_label = QLabel(display_name)
             doctor_layout.addWidget(doctor_label)
             # 显示该医生的第一条笔记
@@ -128,7 +128,7 @@ class NoteDetailsWidget(QWidget):
     def open_note_viewer(self, doctor_id,doctor_name):
         """使用 Socket.IO 获取医生的笔记并显示在窗口中"""
         self.selected_doctor_id = doctor_id  # 记录当前医生 ID
-        self.selected_doctor_name = "Me" if int(doctor_id) == self.user_id else doctor_name
+        self.selected_doctor_name = "Me" if int(doctor_id) == int(self.user_id) else doctor_name
         # 发送请求获取医生的笔记
         self.sio.emit("get_doctor_notes", {"task_id": self.task_id, "doctor_id": doctor_id})
         QTimer.singleShot(1000, self.operate)

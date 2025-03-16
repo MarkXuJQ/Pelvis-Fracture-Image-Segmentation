@@ -5,9 +5,9 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 
 from system.medical_viewer.image_viewer_window import MedicalImageViewer
-from system.delegate import TaskItemDelegate
-from system.fracture_edit import FractureHistoryDialog
-from system.stylesheet import apply_stylesheet
+from delegate import TaskItemDelegate
+from fracture_edit import FractureHistoryDialog
+from stylesheet import apply_stylesheet
 from system.medical_viewer.xray_viewer import XRayViewer
 from system.medical_viewer.ct_viewer import CTViewer
 from PyQt5.QtCore import Qt
@@ -19,7 +19,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from chat_window import ChatApp
 from settings_dialog import SettingsDialog
-from system.database.db_config import db_config
+from database.db_config import db_config
 
 # 创建数据库连接
 engine = create_engine(
@@ -44,17 +44,8 @@ class DoctorUI(QMainWindow):
         self.items_per_page = 10
         self.viewer = None  # Will hold the current image viewer
         self.render_on_open = False
-        self.delegate = TaskItemDelegate(self.patientList,None,self)  # ✅ 只创建一次
-        self.patientList.setItemDelegate(self.delegate)  # ✅ 只设置一次
-
-        '''self.message_list_data = [
-            "注意事项：请检查病人病史。",
-            "更新提醒：病人列表已更新。",
-            "系统提示：分配操作成功。",
-        ]
-
-        # 初始化病人列表和消息提示
-        self.messageList.addItems(self.message_list_data)'''
+        self.delegate = TaskItemDelegate(self.patientList,None,self)  # 只创建一次
+        self.patientList.setItemDelegate(self.delegate)  # 只设置一次
 
         # 设置分页按钮信号
         self.firstPageButton.clicked.connect(self.first_page)
@@ -75,11 +66,9 @@ class DoctorUI(QMainWindow):
         self.settings_menu = QMenu(self)
 
         # 创建菜单项
-        self.help_action = QAction("帮助", self)
         self.exit_action = QAction("退出", self)
         self.settings_action = QAction("3D模型", self)
         # 将菜单项添加到菜单中
-        self.settings_menu.addAction(self.help_action)
         self.settings_menu.addAction(self.exit_action)
         self.settings_menu.addAction(self.settings_action)
 
@@ -153,9 +142,31 @@ class DoctorUI(QMainWindow):
                 item = QListWidgetItem(display_text)
                 item.setData(Qt.UserRole, message_id)  # 绑定 message_id 方便后续标记已读
                 self.messageList.addItem(item)
+            # 绑定点击事件
+            self.messageList.itemClicked.connect(self.mark_message_as_read)
 
         except Exception as e:
             print(f"Error loading unread messages: {e}")
+
+    def mark_message_as_read(self, item):
+        """标记消息为已读，并更新消息列表"""
+        try:
+            message_id = item.data(Qt.UserRole)  # 获取 message_id
+            if message_id is None:
+                return  # 避免意外点击空项时报错
+            session = Session()
+            update_query = text("""
+                UPDATE messages
+                SET is_read = 'true'
+                WHERE message_id = :message_id
+            """)
+            session.execute(update_query, {'message_id': message_id})
+            session.commit()  # 提交更改
+            print(f"Message {message_id} marked as read.")
+            # 重新加载未读消息列表
+            self.load_unread_messages()
+        except Exception as e:
+            print(f"Error marking message as read: {e}")
 
     def load_data_from_database(self):
         """从数据库加载数据并更新表格"""
@@ -238,9 +249,9 @@ class DoctorUI(QMainWindow):
         fracture_date_origin = self.tableWidget.item(row, 2).text()
         # 格式化看病日期为 MM.DD 格式
         try:
-            fracture_date = pd.to_datetime(fracture_date_origin).strftime('%m.%d')  # 使用pandas格式化日期
+            fracture_date = pd.to_datetime(fracture_date_origin).strftime('%m.%d')  # 使用 pandas 格式化日期
         except ValueError:
-            fracture_date = "未知"  # 如果日期格式不正确，设置为"未知"
+            fracture_date = "00.00"
 
         # 格式化病人信息为 '06.25张三' 这种形式
         formatted_patient_info = f"{fracture_date}{patient_name}"
@@ -337,14 +348,25 @@ class DoctorUI(QMainWindow):
             print("Patient Result:", patient_result)
 
             # 查询病人的骨折病史信息
-            history_query = text("""
-                       SELECT fracture_date, fracture_location, severity_level, diagnosis_details
-                       FROM fracturehistories WHERE patient_id = :patient_id AND DATE(fracture_date) = :fracture_date
-                       LIMIT 1
-                   """)
+            # 处理 fracture_date，避免 None 传入 SQL
+            if fracture_date == "None":
+                history_query = text("""
+                    SELECT fracture_date, fracture_location, severity_level, diagnosis_details
+                    FROM fracturehistories WHERE patient_id = :patient_id
+                    ORDER BY fracture_date DESC  -- 获取最新的病史
+                    LIMIT 1
+                """)
+                params = {"patient_id": patient_id}
+            else:
+                history_query = text("""
+                    SELECT fracture_date, fracture_location, severity_level, diagnosis_details
+                    FROM fracturehistories WHERE patient_id = :patient_id AND DATE(fracture_date) = :fracture_date
+                    LIMIT 1
+                """)
+                params = {"patient_id": patient_id, "fracture_date": fracture_date}
 
-            history_results = session.execute(history_query, {"patient_id": patient_id, "fracture_date": fracture_date}).fetchall()
-
+            # 执行查询
+            history_results = session.execute(history_query, params).fetchall()
             # 设置病人基本信息
             if patient_result:
                 # 提取字段值，并处理可能为 None 的情况
@@ -365,21 +387,24 @@ class DoctorUI(QMainWindow):
                 self.patientInfoLabel.setText(patient_details)
             else:
                 self.patientInfoLabel.setText("病人信息：\n未找到病人信息")
-                print("未找到病人信息")
             # 设置病人病史信息
             if history_results:
                 history_details = "病人病史：\n"
                 for history in history_results:
+                    fracture_date = history[0].strftime('%Y-%m-%d') if history[0] else "暂无"
+                    fracture_location = history[1] if history[1] else "暂无"
+                    severity_level = history[2] if history[2] else "暂无"
+                    diagnosis_details = history[3] if history[3] else "暂无"
                     history_details += (
-                        f"诊断日期：{history[0]}\n"  # fracture_date
-                        f"骨折位置：{history[1]}\n"  # fracture_location
-                        f"严重程度：{history[2]}\n"  # severity_level
-                        f"诊断详情：{history[3]}\n\n"  # diagnosis_details
+                        f"诊断日期：{fracture_date}\n"
+                        f"骨折位置：{fracture_location}\n"
+                        f"严重程度：{severity_level}\n"
+                        f"诊断详情：{diagnosis_details}\n\n"
                     )
                 self.patientHistoryLabel.setText(history_details.strip())
-                self.load_patients_to_list(row)
             else:
                 self.patientHistoryLabel.setText("病人病史：\n无病史记录")
+            self.load_patients_to_list(row)
         except Exception as e:
             print(f"Error fetching patient details: {e}")
             self.reset_details()
