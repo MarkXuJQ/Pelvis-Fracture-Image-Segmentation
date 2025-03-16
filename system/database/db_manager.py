@@ -118,7 +118,7 @@ class chat_records(Base):
 
 import pymysql
 from pymysql import Error
-from system.database.db_config import db_config
+from database.db_config import db_config
 import logging
 
 # 设置日志记录

@@ -4,7 +4,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton, QMessageBox, QHBoxLayout
 from sqlalchemy.exc import IntegrityError
 
-from system.WebSocket import Session
+from WebSocket import Session
 from database.db_manager import doctors, patients
 
 
@@ -40,7 +40,8 @@ class AddDoctorDialog(QDialog):
         # **科室选择**
         self.specialty_label = QLabel("科室:")
         self.specialty_combo = QComboBox()
-        self.specialty_combo.addItems(["Orthopedics", "Cardiology", "Pediatrics", "Dermatology", "Neurology", "Gastroenterology"])
+        self.specialty_combo.addItems(
+            ["Orthopedics", "Cardiology", "Pediatrics", "Dermatology", "Neurology", "Gastroenterology"])
         layout.addWidget(self.specialty_label)
         layout.addWidget(self.specialty_combo)
 
@@ -89,6 +90,15 @@ class AddDoctorDialog(QDialog):
             QTimer.singleShot(0, lambda: QMessageBox.information(self, "成功", f"医生 {name} 添加成功！"))
 
             self.accept()  # 关闭窗口
+
+            # 确保插入成功后，发送通知
+            send_message(
+                sender_id="admin",  # 管理员作为发送者
+                receiver_id=new_id,  # 新增的医生 ID 作为接收者
+                message_type="notification",
+                message_content=f"您的账户已由管理员创建，请及时完善个人信息。"
+            )
+
         except IntegrityError:
             session.rollback()
             QMessageBox.critical(self, "错误", "数据库插入失败，可能是 ID 重复！")
@@ -121,6 +131,7 @@ def generate_patient_id():
         new_id = "P00001"  # 第一个病人
 
     return new_id
+
 
 class AddPatientDialog(QDialog):
     def __init__(self, parent=None):
@@ -188,11 +199,20 @@ class AddPatientDialog(QDialog):
             session.commit()
             QMessageBox.information(self, "成功", f"病人 {name} 添加成功！")
             self.accept()  # 关闭窗口
+            # 发送消息通知所有医生
+            send_message_to_all_doctors(
+                sender_id="admin",
+                message_type="notification",
+                message_content=f"新病人 {name}（ID: {patient_id}）已由管理员添加，请注意查收病人信息。"
+            )
+
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"数据库插入失败: {str(e)}")
             session.rollback()
         finally:
             session.close()
+
 
 class EditDoctorDialog(QDialog):
     def __init__(self, parent, doctor):
@@ -219,7 +239,8 @@ class EditDoctorDialog(QDialog):
 
         # **科室（下拉选择框）**
         self.specialty_combo = QComboBox()
-        self.specialty_combo.addItems(["Orthopedics", "Cardiology", "Pediatrics", "Dermatology", "Neurology", "Gastroenterology"])
+        self.specialty_combo.addItems(
+            ["Orthopedics", "Cardiology", "Pediatrics", "Dermatology", "Neurology", "Gastroenterology"])
         self.specialty_combo.setCurrentText(doctor.specialty)
         layout.addWidget(QLabel("科室:"))
         layout.addWidget(self.specialty_combo)
@@ -266,6 +287,18 @@ class EditDoctorDialog(QDialog):
 
                 QMessageBox.information(self, "成功", "医生信息已更新！")
                 self.accept()  # **关闭窗口**
+
+                # 获取当前修改的医生 ID
+                modified_id = self.doctor.doctor_id
+
+                # 发送修改通知
+                send_message(
+                    sender_id="admin",
+                    receiver_id=modified_id,
+                    message_type="notification",
+                    message_content=f"您的账户信息已被管理员修改，请及时查看。"
+                )
+
             else:
                 QMessageBox.warning(self, "错误", "医生记录未找到！")
         except Exception as e:
@@ -323,7 +356,6 @@ class EditPatientDialog(QDialog):
         self.save_button.clicked.connect(self.save_changes)
         self.cancel_button.clicked.connect(self.reject)
 
-    import re  # 用于检查邮箱格式
 
     def save_changes(self):
         """保存病人修改信息"""
@@ -367,6 +399,17 @@ class EditPatientDialog(QDialog):
 
                 QMessageBox.information(self, "成功", "病人信息已更新！")
                 self.accept()
+                # 获取修改后的病人 ID 和姓名
+                modified_id = self.patient.patient_id
+                modified_name = self.patient.patient_name
+
+                # 发送通知
+                send_message_to_all_doctors(
+                    sender_id="admin",
+                    message_type="notification",
+                    message_content=f"病人 {modified_name}（ID: {modified_id}）的信息已被管理员修改，请注意更新相关信息。"
+                )
+
             else:
                 QMessageBox.warning(self, "错误", "病人记录未找到！")
         except Exception as e:
@@ -375,3 +418,59 @@ class EditPatientDialog(QDialog):
         finally:
             session.close()
 
+
+from datetime import datetime
+from sqlalchemy import text
+
+
+def send_message(sender_id, receiver_id, message_type, message_content):
+    """向 messages 表中插入一条新消息"""
+    session = Session()
+    try:
+        insert_query = text("""
+            INSERT INTO messages (sender_id, receiver_id, message_type, message_content, is_read, created_at)
+            VALUES (:sender_id, :receiver_id, :message_type, :message_content, 'false', :created_at)
+        """)
+        session.execute(insert_query, {
+            "sender_id": sender_id,
+            "receiver_id": receiver_id,
+            "message_type": message_type,
+            "message_content": message_content,
+            "created_at": datetime.now()
+        })
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"❌ 消息发送失败: {e}")
+    finally:
+        session.close()
+
+
+def send_message_to_all_doctors(sender_id, message_type, message_content):
+    """向所有医生发送消息"""
+    session = Session()
+    try:
+        # 查询所有医生的 ID
+        doctor_ids = session.query(doctors.doctor_id).all()
+
+        # 遍历医生 ID 逐个发送通知
+        for doctor_id in doctor_ids:
+            insert_query = text("""
+                INSERT INTO messages (sender_id, receiver_id, message_type, message_content, is_read, created_at)
+                VALUES (:sender_id, :receiver_id, :message_type, :message_content, 'false', :created_at)
+            """)
+            session.execute(insert_query, {
+                "sender_id": sender_id,
+                "receiver_id": doctor_id[0],  # doctor_id 是一个元组，取第一个元素
+                "message_type": message_type,
+                "message_content": message_content,
+                "created_at": datetime.now()
+            })
+
+        session.commit()
+        print("✅ 已成功通知所有医生")
+    except Exception as e:
+        session.rollback()
+        print(f"❌ 发送消息失败: {e}")
+    finally:
+        session.close()

@@ -8,8 +8,9 @@ from PyQt5.uic import loadUi
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine, text
 from database.db_manager import doctors, patients, db_config  # 你的数据库表
-from system.admin_manager import AddDoctorDialog, AddPatientDialog, EditDoctorDialog, EditPatientDialog
-from system.stylesheet import apply_stylesheet
+from admin_manager import AddDoctorDialog, AddPatientDialog, EditDoctorDialog, EditPatientDialog, \
+    send_message_to_all_doctors
+from stylesheet import apply_stylesheet
 
 # 创建数据库连接
 engine = create_engine(
@@ -347,6 +348,10 @@ class AdminUI(QMainWindow):
         )
 
         if reply == QMessageBox.Yes:
+            # 获取被删除的病人 ID 和姓名
+            deleted_id = self.tableWidget.item(row, 0).text()
+            deleted_name = self.tableWidget.item(row, 1).text()
+
             session = Session()
 
             try:
@@ -368,6 +373,13 @@ class AdminUI(QMainWindow):
                         self.load_data()
 
                     QMessageBox.information(self, "删除成功", "记录已成功删除！")
+                    # 发送通知
+                    if self.current_mode == "patient":
+                        send_message_to_all_doctors(
+                            sender_id="admin",
+                            message_type="notification",
+                            message_content=f"病人 {deleted_name}（ID: {deleted_id}）已被管理员删除，请更新相关记录。"
+                        )
                 else:
                     QMessageBox.warning(self, "错误", "未找到该记录，删除失败！")
 
