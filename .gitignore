@@ -9,6 +9,8 @@
 *.tmp
 *.bak
 *.pth
+*.pt
+*.ckpt
 
 # Ignore any compiled files
 # Python

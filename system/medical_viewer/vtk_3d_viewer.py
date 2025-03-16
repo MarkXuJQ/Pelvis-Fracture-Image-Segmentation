@@ -93,15 +93,18 @@ class VTK3DViewer(QWidget):
         self.original_opacity.AddPoint(0.7, 0.5)
         self.original_opacity.AddPoint(1.0, 0.9)
         
-        # 创建分割结果的颜色映射
+        # 创建分割结果的颜色映射 - 使用更鲜明的颜色
         self.segmentation_color = vtk.vtkColorTransferFunction()
-        self.segmentation_color.AddRGBPoint(0.0, 0.0, 0.0, 0.0)
-        self.segmentation_color.AddRGBPoint(1.0, 1.0, 0.0, 0.0)  # 红色
+        self.segmentation_color.AddRGBPoint(0.0, 0.0, 0.0, 0.0)     # 背景透明
+        self.segmentation_color.AddRGBPoint(0.5, 0.0, 0.8, 1.0)     # 中间值为蓝紫色
+        self.segmentation_color.AddRGBPoint(1.0, 1.0, 0.2, 0.0)     # 高值为亮橙红色
         
-        # 创建分割结果的不透明度映射
+        # 创建分割结果的不透明度映射 - 增加对比度
         self.segmentation_opacity = vtk.vtkPiecewiseFunction()
-        self.segmentation_opacity.AddPoint(0.0, 0.0)
-        self.segmentation_opacity.AddPoint(1.0, 0.7)
+        self.segmentation_opacity.AddPoint(0.0, 0.0)                # 背景完全透明
+        self.segmentation_opacity.AddPoint(0.3, 0.0)                # 低值区域透明
+        self.segmentation_opacity.AddPoint(0.7, 0.8)                # 中间值半透明
+        self.segmentation_opacity.AddPoint(1.0, 0.9)                # 高值几乎不透明
         
     def set_volume_data(self, volume, mask=None):
         """
@@ -263,11 +266,13 @@ class VTK3DViewer(QWidget):
             mapper.SetInputConnection(contour.GetOutputPort())
             mapper.ScalarVisibilityOff()
             
-            # 创建actor
+            # 创建actor - 使用更鲜明的颜色
             self.surface_actor = vtk.vtkActor()
             self.surface_actor.SetMapper(mapper)
-            self.surface_actor.GetProperty().SetColor(1.0, 0.0, 0.0)  # 红色
-            self.surface_actor.GetProperty().SetOpacity(0.7)
+            self.surface_actor.GetProperty().SetColor(0.0, 0.8, 1.0)  # 亮青蓝色
+            self.surface_actor.GetProperty().SetOpacity(0.8)          # 稍微提高不透明度
+            self.surface_actor.GetProperty().SetSpecular(0.3)         # 添加光泽
+            self.surface_actor.GetProperty().SetSpecularPower(20)     # 调整光泽度
             
             # 添加到渲染器
             self.renderer.AddActor(self.surface_actor)

@@ -17,6 +17,11 @@ import matplotlib.colors as mcolors
 import traceback  # 添加traceback模块导入
 import logging
 
+# 减少各种库的日志输出
+logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+logging.getLogger('PIL').setLevel(logging.WARNING)
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
 # 设置中文字体
 matplotlib.rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'sans-serif']
 
@@ -626,7 +631,7 @@ class MedicalImageApp(QMainWindow):
         # 添加3D查看按钮
         self.view_3d_btn = QPushButton("3D查看")
         self.view_3d_btn.setEnabled(False)
-        self.view_3d_btn.clicked.connect(self.show_3d_view)
+        self.view_3d_btn.clicked.connect(self.view_in_3d)
         control_layout.addWidget(self.view_3d_btn)
         
     def clear_points(self):
@@ -642,15 +647,26 @@ class MedicalImageApp(QMainWindow):
     def on_model_changed(self, index):
         """当模型选择改变时调用"""
         selected_text = self.model_selector.currentText()
-        model_name = selected_text.split(':')[0]
+        selected_model = selected_text.split(':')[0]
         
         # 根据模型类型显示相应控件
-        is_medsam = model_name == 'medsam'
+        is_medsam = selected_model == 'medsam'
         self.prompt_group.setVisible(is_medsam)
         
         # 清除当前的点提示和框
         self.clear_points()
         self.clear_box()
+        
+        # 根据模型类型启用/禁用3D视图按钮
+        is_3d_capable = self.is_3d_capable_model(selected_model)
+        if hasattr(self, 'view_3d_btn'):
+            self.view_3d_btn.setEnabled(is_3d_capable)
+        
+        # 如果模型不支持3D，并且当前在显示3D视图，则切换回2D视图
+        if not is_3d_capable and hasattr(self, 'vtk_viewer') and self.vtk_viewer.isVisible():
+            self.vtk_viewer.hide()
+            if hasattr(self, 'main_widget'):
+                self.main_widget.show()
         
     def on_point_type_changed(self, button):
         """当点提示类型改变时调用"""
@@ -774,7 +790,7 @@ class MedicalImageApp(QMainWindow):
         # 确定掩码是2D还是3D
         mask_is_3d = len(self.mask.shape) == 3
         
-        # 如果是3D掩码，获取当前视图的切片
+        # 获取当前视图对应的掩码切片
         if mask_is_3d:
             if self.current_view == 'axial':
                 mask_slice = self.mask[self.axial_slice]
@@ -791,17 +807,49 @@ class MedicalImageApp(QMainWindow):
         # 清除之前的结果
         self.result_ax.clear()
         
+        # 获取当前选择的模型
+        selected_text = self.model_selector.currentText()
+        selected_model = selected_text.split(':')[0]
+        
         # 显示结果
-        if len(self.box_masks) > 1:
+        if selected_model == 'deeplabv3':
+            # DeepLabV3 特殊处理 - 使用彩色分割方案
+            # 先显示原始图像
+            self.result_ax.imshow(current_slice, cmap='gray')
+            
+            # 创建彩色掩码显示
+            cmap = plt.cm.get_cmap('tab20', 24)  # 24类，使用tab20彩色映射
+            
+            # 生成彩色掩码
+            colored_mask = np.zeros((*mask_slice.shape, 4))
+            unique_values = np.unique(mask_slice)
+            print(f"掩码中的唯一值: {unique_values}")
+            
+            for i, val in enumerate(unique_values):
+                if val > 0:  # 跳过背景
+                    # 获取该类别的颜色
+                    color = cmap(int(val % 24))
+                    # 将该值对应的像素设置为对应颜色
+                    mask_color = np.zeros((*mask_slice.shape, 4))
+                    mask_color[mask_slice == val] = color
+                    mask_color[mask_slice == val, 3] = 0.7  # 设置Alpha通道
+                    
+                    # 显示该类别的掩码
+                    self.result_ax.imshow(mask_color)
+                    
+                    # 绘制该类别的轮廓
+                    self.result_ax.contour(mask_slice == val, colors=[color[:3]], linewidths=1.0)
+        
+        elif len(self.box_masks) > 1:
             # 多个框，使用彩色掩码
-            print(f"使用彩色掩码: {len(self.box_masks)}个, 颜色: {[color for color in self.box_colors[:len(self.box_masks)]]}")
+            print(f"使用彩色掩码: {len(self.box_masks)}个")
             
             # 先显示原始图像
             self.result_ax.imshow(current_slice, cmap='gray')
             
             # 然后叠加每个掩码
             for i, mask in enumerate(self.box_masks):
-                if i >= len(self.box_colors):
+                if i >= len(self.original_view.box_colors):
                     break
                 
                 # 确定当前掩码的切片
@@ -818,7 +866,7 @@ class MedicalImageApp(QMainWindow):
                     mask_i_slice = mask
                 
                 # 创建彩色掩码
-                color_name = self.box_colors[i]
+                color_name = self.original_view.box_colors[i]
                 color_rgb = self.original_view.name_to_rgb(color_name)
                 
                 # 创建彩色掩码数组
@@ -832,7 +880,7 @@ class MedicalImageApp(QMainWindow):
                 # 显示彩色掩码
                 self.result_ax.imshow(colored_mask)
         else:
-            # 单个掩码，使用改进的显示方式
+            # 单个掩码，使用标准显示方式
             # 先显示原始图像
             self.result_ax.imshow(current_slice, cmap='gray')
             
@@ -847,7 +895,7 @@ class MedicalImageApp(QMainWindow):
                 self.result_ax.imshow(red_mask)
                 
                 # 同时也显示轮廓，增强可视性
-                self.result_ax.contour(mask_slice, colors=['red'], linewidths=1.5)
+                self.result_ax.contour(mask_slice > 0, colors=['red'], linewidths=1.5)
         
         self.result_ax.axis('off')
         self.result_canvas.draw()
@@ -1053,7 +1101,8 @@ class MedicalImageApp(QMainWindow):
     def segment_image(self):
         """使用选定的模型分割图像"""
         # 获取当前选择的模型
-        selected_model = self.model_selector.currentText().split(':')[0]
+        selected_text = self.model_selector.currentText()
+        selected_model = selected_text.split(':')[0]
         
         # 检查是否有图像
         if not hasattr(self, 'processor') or self.processor.image_data is None:
@@ -1062,104 +1111,114 @@ class MedicalImageApp(QMainWindow):
             
         # 设置模型
         try:
+            print(f"开始使用 {selected_model} 进行分割...")
             model_info = self.available_models.get(selected_model)
             if not model_info:
                 QMessageBox.warning(self, "提示", f"未找到模型: {selected_model}")
                 return
-                
+            
             self.processor.set_segmentation_model(
                 model_name=selected_model,
                 checkpoint_path=model_info['weights_path']
             )
             
-            # 准备点提示和框提示
-            points_array = np.array(self.points) if self.points else None
-            labels_array = np.array(self.point_labels) if self.point_labels else None
-            boxes_array = np.array(self.boxes) if self.boxes else None
+            # 获取当前图像切片
+            if self.processor.is_3d:
+                if self.current_view == 'axial':
+                    image_slice = self.processor.image_data[self.axial_slice]
+                elif self.current_view == 'coronal':
+                    image_slice = self.processor.image_data[:, self.coronal_slice, :]
+                    image_slice = np.rot90(image_slice, k=2)
+                elif self.current_view == 'sagittal':
+                    image_slice = self.processor.image_data[:, :, self.sagittal_slice]
+                    image_slice = np.rot90(image_slice, k=2)
+            else:
+                image_slice = self.processor.image_data
             
             # 清空框掩码
             self.box_masks = []
             
-            # 确保 box_colors 与 boxes 长度匹配
-            if len(self.box_colors) != len(self.boxes):
-                self.box_colors = [self.original_view.box_colors[i % len(self.original_view.box_colors)] for i in range(len(self.boxes))]
-            
-            # 获取当前视图的2D切片
-            if self.processor.is_3d:
-                if selected_model == 'deeplabv3' and model_info.get('is_3d_capable', False):
-                    # 使用DeepLabV3的3D分割能力
-                    QMessageBox.information(self, "处理中", "正在执行3D分割，这可能需要一些时间...")
-                    QApplication.processEvents()  # 更新UI
-                    
-                    # 执行3D分割
-                    if self.current_view == 'axial':
-                        self.mask = self.processor.segmenter.segment_3d(self.processor.image_data, axis=0)
-                    elif self.current_view == 'coronal':
-                        self.mask = self.processor.segmenter.segment_3d(self.processor.image_data, axis=1)
-                    elif self.current_view == 'sagittal':
-                        self.mask = self.processor.segmenter.segment_3d(self.processor.image_data, axis=2)
-                    
-                    self.box_masks = [self.mask]  # 单个掩码
-                    
-                    # 更新显示
-                    self.update_display()
-                    
-                    # 启用3D查看按钮
-                    self.view_3d_btn.setEnabled(True)
-                    
-                    return
+            # ===== MedSAM 分割路径 =====
+            if selected_model == 'medsam':
+                # 准备MedSAM的点提示和框提示
+                points_array = np.array(self.points) if self.points else None
+                labels_array = np.array(self.point_labels) if self.point_labels else None
+                boxes_array = np.array(self.boxes) if self.boxes else None
                 
-                # 常规2D切片处理
-                if self.current_view == 'axial':
-                    current_slice = self.processor.image_data[self.axial_slice]
-                elif self.current_view == 'coronal':
-                    current_slice = self.processor.image_data[:, self.coronal_slice, :]
-                    current_slice = np.rot90(current_slice, k=2)  # 旋转180度
-                elif self.current_view == 'sagittal':
-                    current_slice = self.processor.image_data[:, :, self.sagittal_slice]
-                    current_slice = np.rot90(current_slice, k=2)  # 旋转180度
-                image_to_segment = current_slice
-                
-                # 保存视图信息，方便后续转换回3D
-                self.current_segment_view = self.current_view
-                self.segment_axial_idx = self.axial_slice
-                self.segment_coronal_idx = self.coronal_slice
-                self.segment_sagittal_idx = self.sagittal_slice
-            else:
-                image_to_segment = self.processor.image_data
-            
-            # 对图像进行分割
-            if boxes_array is not None and len(boxes_array) > 0:
-                combined_mask = np.zeros_like(image_to_segment, dtype=bool)
-                for i, box in enumerate(boxes_array):
-                    print(f"处理框 {i}: {box}")
+                if boxes_array is not None and len(boxes_array) > 0:
+                    # 如果有多个框，处理每个框
+                    combined_mask = np.zeros_like(image_slice, dtype=bool)
+                    
+                    for i, box in enumerate(boxes_array):
+                        print(f"处理MedSAM框 {i+1}/{len(boxes_array)}: {box}")
+                        
+                        # MedSAM使用原始接口
+                        mask = self.processor.segmenter.segment(
+                            image_slice,
+                            points=points_array,
+                            point_labels=labels_array,
+                            box=box
+                        )
+                        
+                        # 保存每个框的掩码
+                        self.box_masks.append(mask)
+                        
+                        # 更新组合掩码
+                        combined_mask = np.logical_or(combined_mask, mask > 0)
+                    
+                    # 将布尔掩码转换为uint8
+                    self.mask = (combined_mask * 255).astype(np.uint8)
+                else:
+                    # 只使用点提示或不使用任何提示
+                    print(f"使用MedSAM模型进行分割，无框提示")
+                    
                     mask = self.processor.segmenter.segment(
-                        image_to_segment,  # 使用当前2D切片
+                        image_slice,
                         points=points_array,
-                        point_labels=labels_array,
-                        box=box
+                        point_labels=labels_array
                     )
-                    self.box_masks.append(mask)
-                    combined_mask = np.logical_or(combined_mask, mask)
-                self.mask = combined_mask
-            else:
-                # 只使用点提示(对于DeepLabV3会忽略点提示)
-                print(f"使用{selected_model}模型进行分割")
-                self.mask = self.processor.segmenter.segment(
-                    image_to_segment,  # 使用当前2D切片
-                    points=points_array,
-                    point_labels=labels_array,
-                    box=None
-                )
-                self.box_masks = [self.mask]  # 单个掩码
+                    
+                    # 保存掩码
+                    self.mask = mask
+                    self.box_masks = [mask]
             
-            # 显示结果
+            # ===== DeepLabV3 分割路径 =====
+            elif selected_model == 'deeplabv3':
+                print("使用DeepLabV3进行分割")
+                
+                # DeepLabV3 不使用点标记或框，直接进行分割
+                # 设置raw_output=True获取原始多类别预测，便于后处理
+                use_raw_output = True
+                
+                # 执行分割
+                multi_class_mask = self.processor.segmenter.segment(
+                    image_slice,
+                    raw_output=use_raw_output
+                )
+                    
+                if multi_class_mask is not None:
+                    print(f"DeepLabV3分割完成，类别范围: {np.min(multi_class_mask)} - {np.max(multi_class_mask)}")
+                    # 创建二值掩码 (非背景为前景)
+                    binary_mask = (multi_class_mask > 0).astype(np.uint8) * 255
+                    
+                    # 保存掩码
+                    self.mask = binary_mask
+                    self.box_masks = [binary_mask]
+                else:
+                    print("DeepLabV3分割失败，返回了空掩码")
+                    QMessageBox.warning(self, "警告", "分割失败，返回了空掩码")
+            
+            # 更新显示
             self.update_display()
             
+            # 启用3D查看按钮
+            self.view_3d_btn.setEnabled(self.processor.is_3d and self.mask is not None)
+            
+            print("分割完成！")
+            
         except Exception as e:
-            print(f"分割时出现错误: {e}")
-            print(traceback.format_exc())
-            QMessageBox.critical(self, "错误", f"分割失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"分割时出错: {str(e)}")
+            traceback.print_exc()
     
     def save_result(self):
         """保存分割结果"""
@@ -1182,41 +1241,51 @@ class MedicalImageApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"保存结果失败: {str(e)}")
 
-    def show_3d_view(self):
-        """显示3D视图"""
-        if not hasattr(self, 'processor') or self.processor.image_data is None or not self.processor.is_3d:
-            QMessageBox.warning(self, "提示", "没有可用的3D数据")
+    def view_in_3d(self):
+        """在3D中查看图像"""
+        if not hasattr(self, 'processor') or not self.processor.image_data is not None:
+            QMessageBox.warning(self, "错误", "请先加载图像")
             return
         
-        if self.mask is None:
-            QMessageBox.warning(self, "提示", "请先进行3D分割")
+        if not self.processor.is_3d:
+            QMessageBox.warning(self, "错误", "只有3D图像才能以3D方式查看")
             return
         
-        # 创建3D查看器对话框
-        self.vtk_dialog = QDialog(self)
-        self.vtk_dialog.setWindowTitle("3D可视化")
-        self.vtk_dialog.setMinimumSize(800, 600)
+        # 获取当前选择的模型
+        current_model = self.model_selector.currentText() if hasattr(self, 'model_selector') else None
         
-        # 创建布局
-        layout = QVBoxLayout(self.vtk_dialog)
+        # 检查是否是支持3D的模型
+        if current_model and not self.is_3d_capable_model(current_model):
+            QMessageBox.information(self, "提示", 
+                                  f"当前选择的 {current_model} 模型不支持3D显示。\n"
+                                  "请使用 3D U-Net 或其他3D分割模型。")
+            return
         
         # 创建3D查看器
-        self.vtk_viewer = VTK3DViewer()
-        layout.addWidget(self.vtk_viewer)
+        if not hasattr(self, 'vtk_viewer'):
+            self.vtk_viewer = VTK3DViewer()
+        
+        # 获取当前图像数据
+        volume = self.processor.image_data
+        
+        # 如果已经有掩码，也加载它
+        mask = self.current_mask if hasattr(self, 'current_mask') and self.current_mask is not None else None
         
         # 设置数据
-        self.vtk_viewer.set_volume_data(self.processor.image_data, self.mask)
+        self.vtk_viewer.set_volume_data(volume, mask)
         
-        # 添加关闭按钮
-        close_btn = QPushButton("关闭")
-        close_btn.clicked.connect(self.vtk_dialog.close)
-        layout.addWidget(close_btn)
-        
-        # 显示对话框
-        self.vtk_dialog.exec_()
-        
-        # 清理VTK资源
-        self.vtk_viewer.cleanup()
+        # 显示3D查看器
+        self.vtk_viewer.setWindowTitle("3D医学图像查看器")
+        self.vtk_viewer.resize(800, 600)
+        self.vtk_viewer.show()
+
+    def is_3d_capable_model(self, model_name):
+        """判断所选模型是否支持3D显示"""
+        if model_name == 'deeplabv3':
+            return False  # DeepLabV3 只支持 2D 切片分割
+        elif model_name in ['3dunet', 'vnet', 'medsam']:
+            return True  # 这些模型支持 3D 分割
+        return False  # 默认不支持
 
 
 if __name__ == "__main__":

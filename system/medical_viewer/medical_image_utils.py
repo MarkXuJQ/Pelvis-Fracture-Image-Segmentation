@@ -333,6 +333,14 @@ class MedicalImageProcessor:
         else:
             raise ValueError(f"不支持的模型类型: {model_name}")
 
+    def segment_image(self, image, points=None, boxes=None, prompt_type='points', threshold=0.5, raw_output=False):
+        # ...代码保持不变...
+        
+        # 在返回结果前添加
+        if raw_output:
+            # 返回原始概率图而不是二值掩码
+            return self.segmenter.get_probability_map(image, points, boxes, prompt_type)
+
 
 def list_available_models() -> dict:
     """
@@ -345,19 +353,25 @@ def list_available_models() -> dict:
         'medsam': {
             'description': 'Medical SAM 模型 (基于SAM的医学图像分割)',
             'weights_path': 'weights/MedSAM/medsam_vit_b.pth',
-            'class': MedSAMSegmenter
+            'class': MedSAMSegmenter,
+            'is_3d_capable': True
         },
         'deeplabv3': {
-            'description': 'DeepLabV3 模型 (3D医学图像分割)',
-            'weights_path': 'weights/DeeplabV3/DeeplabV3_best_model.pth',
+            'description': 'DeepLabV3 模型 (医学图像分割)',
+            'weights_path': 'weights/DeeplabV3/final_model.pt',  # 更新为新的权重文件路径
             'class': DeeplabV3Segmenter,
+            'is_3d_capable': False  # 明确标记不支持3D
+        },
+        '3dunet': {
+            'description': '3D U-Net 模型 (3D医学图像分割)',
+            'weights_path': 'weights/3DUNet/3dunet_best_model.pth',
             'is_3d_capable': True
         }
     }
     
     # 检查权重文件是否存在
     for name, info in models.items():
-        if os.path.exists(info['weights_path']):
+        if 'weights_path' in info and os.path.exists(info['weights_path']):
             info['status'] = '已安装'
         else:
             info['status'] = '未安装'
