@@ -10,9 +10,9 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox,
 from PyQt5 import uic
 import SimpleITK as sitk
 from sqlalchemy.dialects.mysql import pymysql
-from system.medical_viewer.ct_viewer import CTViewer
-from system.database.db_manager import get_connection
-from system.medical_viewer.xray_viewer import XRayViewer
+from medical_viewer.ct_viewer import CTViewer
+from database.db_manager import get_connection
+from medical_viewer.xray_viewer import XRayViewer
 from utils.file_upload import FileUploader
 import tempfile
 from utils.download_thread import DownloadThread
@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import QPushButton, QGroupBox, QComboBox
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from system.medical_viewer.medical_image_utils import MedicalImageProcessor
+from medical_viewer.medical_image_utils import MedicalImageProcessor
 
 
 class ImageViewerWindow(QMainWindow):
@@ -252,10 +252,10 @@ class MedicalImageViewer(QMainWindow):
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "image_viewer_window.ui"),
                 
                 # 2. 用户指定的位置
-                os.path.abspath(os.path.join("system", "ui", "image_viewer_window.ui")),
+                os.path.abspath(os.path.join( "ui", "image_viewer_window.ui")),
                 
                 # 3. 基于当前工作目录
-                os.path.join(os.getcwd(), "system", "ui", "image_viewer_window.ui"),
+                os.path.join(os.getcwd(),  "ui", "image_viewer_window.ui"),
                 
                 # 4. 绝对路径 (如果在Windows下运行)
                 "d:\\pelvis\\system\\ui\\image_viewer_window.ui" if os.name == 'nt' else None
