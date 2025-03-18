@@ -354,17 +354,6 @@ class InteractiveCanvas(FigureCanvas):
         
         self.draw_idle()  # 重绘画布
     
-    def add_circle(self, x, y, label):
-        """添加一个圆点到画布上"""
-        # 选择颜色
-        color = 'red' if label == 1 else 'blue'
-        
-        # 绘制圆点
-        circle = plt.Circle((x, y), 5, color=color, fill=True, alpha=0.6)
-        self.axes.add_patch(circle)
-        self.points_plotted.append(circle)
-        self.points.append((x, y, label))
-
     def name_to_rgb(self, color_name):
         """将颜色名称转换为RGB值"""
         color_map = {
@@ -385,6 +374,44 @@ class MedicalImageApp(QMainWindow):
         # 设置窗口属性
         self.setWindowTitle("医学图像分割应用")
         self.resize(1200, 800)
+        
+        # 设置较大的字体
+        font = self.font()
+        font.setPointSize(10)  # 调整字体大小
+        font.setFamily("Microsoft YaHei")  # 使用微软雅黑字体支持中文
+        self.setFont(font)  # 应用到整个窗口
+        
+        # 设置全局样式表 - 添加QRadioButton样式
+        self.setStyleSheet("""
+            QPushButton {
+                font-family: 'Microsoft YaHei';
+                font-size: 10pt;
+                padding: 5px;
+                min-height: 30px;
+            }
+            QGroupBox {
+                font-family: 'Microsoft YaHei';
+                font-size: 10pt;
+                font-weight: bold;
+            }
+            QLabel {
+                font-family: 'Microsoft YaHei';
+                font-size: 10pt;
+            }
+            QComboBox {
+                font-family: 'Microsoft YaHei';
+                font-size: 10pt;
+                min-height: 25px;
+            }
+            QRadioButton {
+                font-family: 'Microsoft YaHei';
+                font-size: 10pt;
+            }
+            QCheckBox {
+                font-family: 'Microsoft YaHei'; 
+                font-size: 10pt;
+            }
+        """)
         
         # 状态变量
         self.processor = MedicalImageProcessor()
@@ -1109,18 +1136,51 @@ class MedicalImageApp(QMainWindow):
             QMessageBox.warning(self, "提示", "请先加载图像")
             return
             
-        # 设置模型
+        # 创建进度对话框
+        progress_dialog = None
         try:
+            # 设置模型
             print(f"开始使用 {selected_model} 进行分割...")
             model_info = self.available_models.get(selected_model)
             if not model_info:
                 QMessageBox.warning(self, "提示", f"未找到模型: {selected_model}")
                 return
             
+            weights_path = model_info.get('weights_path')
+            if not weights_path or not os.path.exists(weights_path):
+                QMessageBox.warning(self, "提示", f"模型权重文件不存在: {weights_path}")
+                return
+            
+            # 显示进度对话框
+            progress_dialog = QMessageBox()
+            progress_dialog.setIcon(QMessageBox.Information)
+            progress_dialog.setWindowTitle("处理中")
+            progress_dialog.setText(f"正在加载和准备{selected_model}模型，请稍候...")
+            progress_dialog.setStandardButtons(QMessageBox.NoButton)
+            progress_dialog.show()
+            
+            # 处理Qt事件，确保对话框显示
+            QApplication.processEvents()
+            
+            # 设置分割模型
             self.processor.set_segmentation_model(
                 model_name=selected_model,
-                checkpoint_path=model_info['weights_path']
+                checkpoint_path=weights_path
             )
+            
+            # 对于MedSAM，确保显式调用load_model
+            if selected_model == 'medsam' and hasattr(self.processor.segmenter, 'load_model'):
+                print("显式加载MedSAM模型...")
+                # 更新进度对话框
+                progress_dialog.setText("正在加载MedSAM模型，这可能需要几秒钟...")
+                QApplication.processEvents()
+                
+                # 显式加载模型
+                self.processor.segmenter.load_model(weights_path)
+                
+            # 更新进度对话框
+            progress_dialog.setText(f"正在使用{selected_model}进行分割，请稍候...")
+            QApplication.processEvents()
             
             # 获取当前图像切片
             if self.processor.is_3d:
@@ -1140,6 +1200,11 @@ class MedicalImageApp(QMainWindow):
             
             # ===== MedSAM 分割路径 =====
             if selected_model == 'medsam':
+                # 确认模型已加载
+                if not hasattr(self.processor.segmenter, 'model') or self.processor.segmenter.model is None:
+                    QMessageBox.warning(self, "提示", "MedSAM模型未加载，尝试重新加载...")
+                    self.processor.segmenter.load_model(weights_path)
+                    
                 # 准备MedSAM的点提示和框提示
                 points_array = np.array(self.points) if self.points else None
                 labels_array = np.array(self.point_labels) if self.point_labels else None
@@ -1153,18 +1218,24 @@ class MedicalImageApp(QMainWindow):
                         print(f"处理MedSAM框 {i+1}/{len(boxes_array)}: {box}")
                         
                         # MedSAM使用原始接口
-                        mask = self.processor.segmenter.segment(
-                            image_slice,
-                            points=points_array,
-                            point_labels=labels_array,
-                            box=box
-                        )
-                        
-                        # 保存每个框的掩码
-                        self.box_masks.append(mask)
-                        
-                        # 更新组合掩码
-                        combined_mask = np.logical_or(combined_mask, mask > 0)
+                        try:
+                            mask = self.processor.segmenter.segment(
+                                image_slice,
+                                points=points_array,
+                                point_labels=labels_array,
+                                box=box
+                            )
+                            
+                            # 保存每个框的掩码
+                            self.box_masks.append(mask)
+                            
+                            # 更新组合掩码
+                            combined_mask = np.logical_or(combined_mask, mask > 0)
+                        except Exception as e:
+                            print(f"处理框 {i+1} 时出错: {str(e)}")
+                            QMessageBox.warning(self, "警告", f"处理框 {i+1} 时出错: {str(e)}")
+                            traceback.print_exc()
+                            continue
                     
                     # 将布尔掩码转换为uint8
                     self.mask = (combined_mask * 255).astype(np.uint8)
@@ -1172,16 +1243,21 @@ class MedicalImageApp(QMainWindow):
                     # 只使用点提示或不使用任何提示
                     print(f"使用MedSAM模型进行分割，无框提示")
                     
-                    mask = self.processor.segmenter.segment(
-                        image_slice,
-                        points=points_array,
-                        point_labels=labels_array
-                    )
-                    
-                    # 保存掩码
-                    self.mask = mask
-                    self.box_masks = [mask]
-            
+                    try:
+                        mask = self.processor.segmenter.segment(
+                            image_slice,
+                            points=points_array,
+                            point_labels=labels_array
+                        )
+                        
+                        # 保存掩码
+                        self.mask = mask
+                        self.box_masks = [mask]
+                    except Exception as e:
+                        print(f"分割出错: {str(e)}")
+                        QMessageBox.warning(self, "警告", f"分割出错: {str(e)}")
+                        traceback.print_exc()
+
             # ===== DeepLabV3 分割路径 =====
             elif selected_model == 'deeplabv3':
                 print("使用DeepLabV3进行分割")
@@ -1208,6 +1284,62 @@ class MedicalImageApp(QMainWindow):
                     print("DeepLabV3分割失败，返回了空掩码")
                     QMessageBox.warning(self, "警告", "分割失败，返回了空掩码")
             
+            # ===== UNet3D 分割路径 =====
+            elif selected_model == 'unet3d':
+                print("使用UNet3D (UNETR)进行分割")
+                
+                if not self.processor.is_3d:
+                    QMessageBox.warning(self, "提示", "UNet3D模型需要3D体积数据")
+                    return
+                    
+                # UNet3D处理整个体积而不是单个切片
+                try:
+                    # 注释掉进度对话框相关代码
+                    # progress = QMessageBox(QMessageBox.Information, 
+                    #                      "处理中", 
+                    #                      "正在进行3D体积分割，请稍候...", 
+                    #                      QMessageBox.Cancel, 
+                    #                      self)
+                    # progress.setStandardButtons(QMessageBox.NoButton)
+                    # progress.show()
+                    # QApplication.processEvents()
+                    
+                    # 执行3D分割
+                    volume_mask = self.processor.segmenter.segment(
+                        self.processor.image_data
+                    )
+                    
+                    # 关闭进度对话框的代码也不需要了
+                    # progress.close()
+                    
+                    if volume_mask is not None:
+                        print(f"UNet3D分割完成，掩码形状: {volume_mask.shape}")
+                        
+                        # 保存体积掩码
+                        self.mask = volume_mask
+                        
+                        # 创建当前视图的切片掩码
+                        if self.current_view == 'axial':
+                            mask_slice = self.mask[self.axial_slice]
+                        elif self.current_view == 'coronal':
+                            mask_slice = self.mask[:, self.coronal_slice, :]
+                            mask_slice = np.rot90(mask_slice, k=2)
+                        elif self.current_view == 'sagittal':
+                            mask_slice = self.mask[:, :, self.sagittal_slice]
+                            mask_slice = np.rot90(mask_slice, k=2)
+                        
+                        # 添加到box_masks用于显示
+                        self.box_masks = [mask_slice]
+                        
+                        # 启用3D查看
+                        self.view_3d_btn.setEnabled(True)
+                    else:
+                        print("UNet3D分割失败，返回了空掩码")
+                        QMessageBox.warning(self, "警告", "分割失败，返回了空掩码")
+                except Exception as e:
+                    QMessageBox.critical(self, "错误", f"UNet3D分割出错: {str(e)}")
+                    traceback.print_exc()
+            
             # 更新显示
             self.update_display()
             
@@ -1217,8 +1349,13 @@ class MedicalImageApp(QMainWindow):
             print("分割完成！")
             
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"分割时出错: {str(e)}")
+            print(f"分割时出错: {str(e)}")
             traceback.print_exc()
+            QMessageBox.critical(self, "错误", f"分割时出错: {str(e)}")
+        finally:
+            # 确保在任何情况下都关闭进度对话框
+            if progress_dialog and progress_dialog.isVisible():
+                progress_dialog.close()
     
     def save_result(self):
         """保存分割结果"""
@@ -1281,9 +1418,10 @@ class MedicalImageApp(QMainWindow):
 
     def is_3d_capable_model(self, model_name):
         """判断所选模型是否支持3D显示"""
+        model_name = model_name.split(':')[0]  # 获取模型ID
         if model_name == 'deeplabv3':
             return False  # DeepLabV3 只支持 2D 切片分割
-        elif model_name in ['3dunet', 'vnet', 'medsam']:
+        elif model_name in ['unet3d', '3dunet', 'vnet', 'medsam']:
             return True  # 这些模型支持 3D 分割
         return False  # 默认不支持
 

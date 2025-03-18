@@ -10,6 +10,7 @@ import sys
 from matplotlib.colors import LinearSegmentedColormap
 import cv2
 import traceback
+from PIL import Image
 
 # 添加项目根目录到Python路径 - 修复导入问题
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
@@ -298,92 +299,76 @@ class DeeplabV3Segmenter:
             
         return colored_mask
     
-    def segment(self, image, points=None, point_labels=None, box=None, raw_output=False):
-        """对图像进行分割
+    def segment(self, image, raw_output=False, **kwargs):
+        """
+        使用DeepLabV3进行图像分割
         
         参数:
-            image: 输入图像
-            points: 点标记 (DeepLabV3 不使用)
-            point_labels: 点标记的标签 (DeepLabV3 不使用)
-            box: 边界框 (DeepLabV3 不使用)
-            raw_output: 是否返回原始多类别输出
+            image: numpy数组，输入图像
+            raw_output: 是否返回原始多类别预测结果
             
         返回:
             分割掩码
         """
         try:
-            print("==== 开始DeepLabV3分割 ====")
-            
-            # 检查模型是否成功初始化
-            if self.model is None:
-                print("错误: DeepLabV3模型未成功初始化，无法执行分割")
-                QMessageBox.critical(None, "模型错误", 
-                    "DeepLabV3模型未能正确加载。请检查权重文件是否存在且格式正确。")
-                # 返回空掩码
-                if raw_output:
-                    # 对于多类别输出，返回全0的具有多个通道的掩码
-                    h, w = image.shape[:2]
-                    return np.zeros((h, w), dtype=np.uint8)
-                else:
-                    # 对于二值掩码，返回全0的掩码
-                    return np.zeros_like(image, dtype=np.uint8)
+            # 记录原始图像尺寸
+            original_shape = image.shape[:2]  # 高和宽
+            print(f"执行DeepLabV3分割，原始图像尺寸: {original_shape}")
             
             # 预处理图像
-            h, w = image.shape[:2]
+            input_tensor = self._preprocess_image(image)
+            if input_tensor is None:
+                raise ValueError("图像预处理失败")
             
-            # 转换图像到PyTorch张量
-            img_tensor = self._preprocess_image(image)
-            print(f"预处理后张量形状: {img_tensor.shape}")
+            # 设置为评估模式
+            self.model.eval()
             
-            # 执行推理
+            # 前向传播
             with torch.no_grad():
-                self.model.eval()
-                output = self.model(img_tensor)
+                output = self.model(input_tensor)['out']
                 
-                if isinstance(output, dict):
-                    output = output['out']
-                elif isinstance(output, list) or isinstance(output, tuple):
-                    output = output[0]
-            
-            # 获取预测结果
-            if raw_output:
-                # 返回完整的多类别预测
-                pred = output.argmax(1).squeeze(0).cpu().numpy().astype(np.uint8)
-                print(f"多类别分割完成，类别范围: {np.min(pred)} - {np.max(pred)}")
-                print(f"分割中的唯一类别: {np.unique(pred)}")
-                
-                # 验证模型是否有效地分割了图像
-                if np.max(pred) == 0:
-                    print("警告: 分割结果只包含背景 (类别0)")
+                # DeepLabV3返回的是logits，需要通过softmax获取概率
+                if raw_output:
+                    # 获取类别预测
+                    predictions = torch.argmax(output, dim=1).squeeze().cpu().numpy()
                     
-                    # 创建一个样例分割结果用于调试
-                    if image is not None:
-                        test_mask = np.zeros_like(image, dtype=np.uint8)
-                        h, w = image.shape[:2]
-                        # 创建一些简单的几何图形作为测试掩码
-                        cv2.circle(test_mask, (w//2, h//2), min(h,w)//4, 1, -1)
-                        cv2.rectangle(test_mask, (w//4, h//4), (3*w//4, 3*h//4), 2, 2)
-                        print("已创建测试掩码进行调试")
-                        
-                        # 仅在调试模式下返回测试掩码
-                        debug_mode = False  # 设置为True以返回测试掩码
-                        if debug_mode:
-                            return test_mask
+                    # 调整预测结果大小，与输入图像一致
+                    if predictions.shape != original_shape:
+                        print(f"调整预测结果形状，从 {predictions.shape} 到 {original_shape}")
+                        import cv2
+                        predictions = cv2.resize(
+                            predictions.astype(np.float32), 
+                            (original_shape[1], original_shape[0]),
+                            interpolation=cv2.INTER_NEAREST
+                        ).astype(np.uint8)
+                    
+                    print(f"分割完成，输出形状: {predictions.shape}")
+                    return predictions
+                else:
+                    # 获取前景概率（假设前景是类别1）
+                    probabilities = torch.softmax(output, dim=1)
+                    foreground_probs = probabilities[0, 1].cpu().numpy()
+                    
+                    # 调整预测结果大小，与输入图像一致
+                    if foreground_probs.shape != original_shape:
+                        print(f"调整概率图形状，从 {foreground_probs.shape} 到 {original_shape}")
+                        import cv2
+                        foreground_probs = cv2.resize(
+                            foreground_probs, 
+                            (original_shape[1], original_shape[0]),
+                            interpolation=cv2.INTER_LINEAR
+                        )
+                    
+                    # 二值化
+                    mask = (foreground_probs > 0.5).astype(np.uint8) * 255
+                    
+                    print(f"分割完成，输出形状: {mask.shape}")
+                    return mask
                 
-                return pred
-            else:
-                # 返回二值掩码（非背景为前景）
-                pred = output.argmax(1).squeeze(0).cpu().numpy()
-                binary_mask = (pred > 0).astype(np.uint8)
-                print(f"二值分割完成，前景像素数: {np.sum(binary_mask)}")
-                return binary_mask
-            
         except Exception as e:
-            print(f"分割时出错: {e}")
+            print(f"DeepLabV3分割过程中出错: {str(e)}")
             traceback.print_exc()
-            
-            # 返回空掩码
-            return np.zeros_like(image, dtype=np.uint8)
+            return None
 
     def get_probability_map(self, image, points=None, box=None, boxes=None, prompt_type=None):
         """获取概率图"""
@@ -495,4 +480,62 @@ class DeeplabV3Segmenter:
                 f"无法创建DeepLabV3模型: {str(e)}\n程序将继续运行，但分割功能可能不可用。")
             
             # 返回None表示模型创建失败
+            return None
+
+    def _preprocess_image(self, image):
+        """
+        预处理输入图像用于DeepLabV3分割
+        
+        参数:
+            image: numpy数组，输入图像
+            
+        返回:
+            预处理后的PyTorch张量
+        """
+        try:
+            # 确保输入是numpy数组
+            if not isinstance(image, np.ndarray):
+                raise ValueError("输入必须是numpy数组")
+            
+            print(f"预处理图像，原始形状: {image.shape}, 类型: {image.dtype}")
+            
+            # 获取模型期望的通道数
+            expected_channels = 1  # 假设模型已设置为接受1通道输入
+            
+            # 处理图像
+            if len(image.shape) == 2:
+                # 已经是单通道图像，无需调整
+                processed_image = image
+            elif len(image.shape) == 3:
+                # 多通道图像，取第一个通道
+                processed_image = image[:, :, 0]
+            else:
+                raise ValueError(f"不支持的图像形状: {image.shape}")
+            
+            # 归一化到[0,1]范围
+            if processed_image.dtype == np.uint16:
+                # 16位图像，使用百分位数裁剪
+                p_low, p_high = np.percentile(processed_image, [1, 99.5])
+                processed_image = np.clip(processed_image, p_low, p_high)
+                processed_image = (processed_image - p_low) / (p_high - p_low)
+            else:
+                # 假设8位图像
+                processed_image = processed_image.astype(np.float32) / np.max(processed_image)
+            
+            # 转换为张量 [N,C,H,W] 格式
+            # 注意：单通道图像使用 unsqueeze 添加通道维度
+            image_tensor = torch.from_numpy(processed_image).float().unsqueeze(0).unsqueeze(0)
+            
+            # 标准化，使用适合医学图像的方式
+            image_tensor = (image_tensor - 0.5) / 0.5  # 简单的均值0.5，标准差0.5标准化
+            
+            # 移动到正确的设备
+            image_tensor = image_tensor.to(self.device)
+            
+            print(f"预处理完成，输出张量形状: {image_tensor.shape}")
+            return image_tensor
+            
+        except Exception as e:
+            print(f"图像预处理失败: {str(e)}")
+            traceback.print_exc()
             return None

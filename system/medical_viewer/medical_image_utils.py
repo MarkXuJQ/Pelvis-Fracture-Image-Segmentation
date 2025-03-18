@@ -9,6 +9,7 @@ import cv2
 import sys
 import vtk
 from vtk.util import numpy_support
+import traceback
 
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 导入分割模型
 from system.medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
 from system.medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
+from .segmenters.unet_3d_segmenter import UNet3DSegmenter
 
 class MedicalImageProcessor:
     """医学图像处理类，提供加载、显示和基础处理功能"""
@@ -308,39 +310,171 @@ class MedicalImageProcessor:
             print(f"保存掩码时出错: {str(e)}")
             return False
     
-    def set_segmentation_model(self, model_name, **kwargs):
-        """设置分割模型"""
-        if model_name == 'medsam':
-            from system.medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
-            model_type = kwargs.get('model_type', 'vit_b')
-            checkpoint_path = kwargs.get('checkpoint_path', os.path.join('weights', 'MedSAM', 'medsam_vit_b.pth'))
-            
-            self.segmenter = MedSAMSegmenter(
-                model_type=model_type,
-                checkpoint_path=checkpoint_path,
-                device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
-            )
-        elif model_name == 'deeplabv3':
-            # 修正导入路径
-            from system.medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
-            
-            # 不传递任何参数，使用默认参数初始化DeeplabV3Segmenter
-            self.segmenter = DeeplabV3Segmenter()
-            
-            # 如果需要设置其他属性，可以在初始化后设置
-            # 例如，如果DeeplabV3Segmenter有device属性:
-            # self.segmenter.device = kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
-        else:
-            raise ValueError(f"不支持的模型类型: {model_name}")
-
-    def segment_image(self, image, points=None, boxes=None, prompt_type='points', threshold=0.5, raw_output=False):
-        # ...代码保持不变...
+    def set_segmentation_model(self, model_name, checkpoint_path=None, device=None):
+        """设置分割模型
         
-        # 在返回结果前添加
-        if raw_output:
-            # 返回原始概率图而不是二值掩码
-            return self.segmenter.get_probability_map(image, points, boxes, prompt_type)
+        参数:
+            model_name: 模型名称，如'medsam', 'deeplabv3', 'unet3d'
+            checkpoint_path: 模型权重文件路径
+            device: 运行设备
+        """
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        print(f"设置分割模型: {model_name}，设备: {device}")
+        
+        # 根据模型名称创建相应的分割器
+        if model_name == 'medsam':
+            self.segmenter = MedSAMSegmenter(checkpoint_path, device=device)
+        elif model_name == 'deeplabv3':
+            self.segmenter = DeeplabV3Segmenter(checkpoint_path, device=device)
+        elif model_name == 'unet3d':
+            # 创建UNet3D分割器并传递权重路径和设备
+            self.segmenter = UNet3DSegmenter(weights_path=checkpoint_path, device=device)
+            print("已创建UNet3D分割器")
+            
+            # 检查UNet3D分割器配置
+            if hasattr(self.segmenter, 'config'):
+                print(f"UNet3D配置: {self.segmenter.config}")
+            
+            # 显示标签映射(如果存在)
+            if hasattr(self.segmenter, 'original_labels'):
+                print("标签映射:")
+                for idx, label in self.segmenter.idx_to_label.items():
+                    print(f"  索引 {idx} -> 标签值 {label}")
+        else:
+            raise ValueError(f"不支持的模型: {model_name}")
 
+    def segment_image(self, prompt_points=None, prompt_box=None):
+        """
+        根据用户提示执行分割
+        
+        参数:
+            prompt_points: 点提示，格式为[((x1,y1), label1), ((x2,y2), label2), ...]
+            prompt_box: 框提示，格式为[x1, y1, x2, y2]
+        
+        返回:
+            分割掩码
+        """
+        if not hasattr(self, 'segmenter'):
+            print("错误: 未设置分割器")
+            return None
+        
+        if self.image_data is None:
+            print("错误: 未加载图像")
+            return None
+        
+        # 获取分割器类型
+        segmenter_type = type(self.segmenter).__name__
+        
+        # 根据分割器类型执行不同的分割逻辑
+        if segmenter_type == 'MedSAMSegmenter':
+            # MedSAM需要点或框提示
+            if self.is_3d:
+                # 对当前切片进行分割
+                if self.current_view == 'axial':
+                    slice_data = self.image_data[self.current_slice]
+                elif self.current_view == 'coronal':
+                    slice_data = self.image_data[:, self.current_slice, :]
+                    slice_data = np.rot90(slice_data, k=2)
+                elif self.current_view == 'sagittal':
+                    slice_data = self.image_data[:, :, self.current_slice]
+                    slice_data = np.rot90(slice_data, k=2)
+                
+                # 执行分割
+                self.mask = self.segmenter.segment(slice_data, prompt_points, prompt_box)
+                
+                # 修改返回的掩码形状以匹配3D数据
+                if self.mask is not None and len(self.mask.shape) == 2:
+                    # 创建全零3D掩码
+                    full_mask = np.zeros_like(self.image_data, dtype=np.uint8)
+                    
+                    # 将2D掩码插入3D掩码的相应切片
+                    if self.current_view == 'axial':
+                        full_mask[self.current_slice] = self.mask
+                    elif self.current_view == 'coronal':
+                        mask_rot = np.rot90(self.mask, k=2)  # 反向旋转
+                        full_mask[:, self.current_slice, :] = mask_rot
+                    elif self.current_view == 'sagittal':
+                        mask_rot = np.rot90(self.mask, k=2)  # 反向旋转
+                        full_mask[:, :, self.current_slice] = mask_rot
+                    
+                    self.mask = full_mask
+            else:
+                # 2D图像直接分割
+                self.mask = self.segmenter.segment(self.image_data, prompt_points, prompt_box)
+        
+        elif segmenter_type == 'DeepLabSegmenter':
+            # DeepLabV3不需要提示，直接分割
+            if self.is_3d:
+                # 对当前切片进行分割
+                if self.current_view == 'axial':
+                    slice_data = self.image_data[self.current_slice]
+                elif self.current_view == 'coronal':
+                    slice_data = self.image_data[:, self.current_slice, :]
+                    slice_data = np.rot90(slice_data, k=2)
+                elif self.current_view == 'sagittal':
+                    slice_data = self.image_data[:, :, self.current_slice]
+                    slice_data = np.rot90(slice_data, k=2)
+                
+                # 执行分割
+                self.mask = self.segmenter.segment(slice_data)
+                
+                # 修改返回的掩码形状以匹配3D数据
+                if self.mask is not None and len(self.mask.shape) == 2:
+                    # 创建全零3D掩码
+                    full_mask = np.zeros_like(self.image_data, dtype=np.uint8)
+                    
+                    # 将2D掩码插入3D掩码的相应切片
+                    if self.current_view == 'axial':
+                        full_mask[self.current_slice] = self.mask
+                    elif self.current_view == 'coronal':
+                        mask_rot = np.rot90(self.mask, k=2)  # 反向旋转
+                        full_mask[:, self.current_slice, :] = mask_rot
+                    elif self.current_view == 'sagittal':
+                        mask_rot = np.rot90(self.mask, k=2)  # 反向旋转
+                        full_mask[:, :, self.current_slice] = mask_rot
+                    
+                    self.mask = full_mask
+            else:
+                # 2D图像直接分割
+                self.mask = self.segmenter.segment(self.image_data)
+        
+        elif segmenter_type == 'UNet3DSegmenter':
+            # UNet3D分割 - 3D体积分割，不需要提示点或框
+            print("执行UNet3D分割...")
+            
+            # 对3D体积进行分割
+            if self.is_3d:
+                # 直接将完整3D体积传递给分割器
+                try:
+                    print(f"传递3D体积给分割器，形状: {self.image_data.shape}")
+                    self.mask = self.segmenter.segment(self.image_data)
+                    
+                    if self.mask is not None:
+                        print(f"分割成功，掩码形状: {self.mask.shape}")
+                        
+                        # 检查标签值
+                        unique_values = np.unique(self.mask)
+                        print(f"分割结果包含以下标签值: {unique_values}")
+                        
+                        return self.mask
+                    else:
+                        print("分割失败：返回了空掩码")
+                        return None
+                except Exception as e:
+                    print(f"UNet3D分割过程中出错: {str(e)}")
+                    traceback.print_exc()
+                    return None
+            else:
+                print("错误: UNet3D分割器需要3D体积数据")
+                return None
+        
+        else:
+            print(f"错误: 不支持的分割器类型 {segmenter_type}")
+            return None
+        
+        return self.mask
 
 def list_available_models() -> dict:
     """
@@ -358,13 +492,14 @@ def list_available_models() -> dict:
         },
         'deeplabv3': {
             'description': 'DeepLabV3 模型 (医学图像分割)',
-            'weights_path': 'weights/DeeplabV3/final_model.pt',  # 更新为新的权重文件路径
+            'weights_path': 'weights/DeeplabV3/complete_deeplabv3_model.pt',  # 更新为新的权重文件路径
             'class': DeeplabV3Segmenter,
             'is_3d_capable': False  # 明确标记不支持3D
         },
-        '3dunet': {
-            'description': '3D U-Net 模型 (3D医学图像分割)',
-            'weights_path': 'weights/3DUNet/3dunet_best_model.pth',
+        'unet3d': {
+            'description': '3D U-Net (适用于CT/MRI体积分割)',
+            'weights_path': 'weights/U-net/final_model.pth',
+            'class': UNet3DSegmenter,
             'is_3d_capable': True
         }
     }
