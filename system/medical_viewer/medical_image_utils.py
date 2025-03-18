@@ -310,27 +310,32 @@ class MedicalImageProcessor:
             print(f"保存掩码时出错: {str(e)}")
             return False
     
-    def set_segmentation_model(self, model_name, checkpoint_path=None, device=None):
-        """设置分割模型
-        
-        参数:
-            model_name: 模型名称，如'medsam', 'deeplabv3', 'unet3d'
-            checkpoint_path: 模型权重文件路径
-            device: 运行设备
-        """
-        if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        print(f"设置分割模型: {model_name}，设备: {device}")
-        
-        # 根据模型名称创建相应的分割器
+    def set_segmentation_model(self, model_name, **kwargs):
+        """设置分割模型"""
         if model_name == 'medsam':
-            self.segmenter = MedSAMSegmenter(checkpoint_path, device=device)
+            # 强制要求提供checkpoint_path
+            if 'checkpoint_path' not in kwargs:
+                # 尝试从预定义模型列表获取
+                model_info = list_available_models().get('medsam')
+                if model_info and model_info.get('exists'):
+                    kwargs['checkpoint_path'] = model_info['weights_path']
+                else:
+                    raise ValueError("必须提供checkpoint_path参数或正确配置模型列表")
+            
+            # 创建实例并加载模型
+            self.segmenter = MedSAMSegmenter(checkpoint_path=kwargs['checkpoint_path'])
+            
+            # 设备设置
+            device = kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+            self.segmenter.device = torch.device(device)
+            
+            print(f"MedSAM模型已成功初始化，使用设备: {self.segmenter.device}")
         elif model_name == 'deeplabv3':
-            self.segmenter = DeeplabV3Segmenter(checkpoint_path, device=device)
+            self.segmenter = DeeplabV3Segmenter(checkpoint_path=kwargs.get('checkpoint_path'), device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
+            print(f"已设置DeepLabV3分割器，使用设备: {self.segmenter.device}")
         elif model_name == 'unet3d':
             # 创建UNet3D分割器并传递权重路径和设备
-            self.segmenter = UNet3DSegmenter(weights_path=checkpoint_path, device=device)
+            self.segmenter = UNet3DSegmenter(weights_path=kwargs.get('checkpoint_path'), device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
             print("已创建UNet3D分割器")
             
             # 检查UNet3D分割器配置

@@ -8,50 +8,42 @@ from segment_anything import sam_model_registry
 class MedSAMSegmenter:
     """专门用于MedSAM模型的分割处理器"""
     
-    def __init__(self, model_type='vit_b', checkpoint_path=None, device=None):
-        """
-        初始化MedSAM分割器
+    def __init__(self, checkpoint_path=None):
+        self.model = None
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        参数:
-            model_type: SAM模型类型 ('vit_b', 'vit_l', 'vit_h')
-            checkpoint_path: 模型权重文件路径
-            device: 运行设备 ('cuda', 'cpu')
-        """
-        # 设置设备
-        if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = torch.device(device)
-            
-        self.model_type = model_type
-        
-        # 加载模型
-        if checkpoint_path:
-            self.load_model(model_type, checkpoint_path)
-        else:
-            self.model = None
-            print("警告: 未提供模型权重路径，请稍后使用load_model方法加载模型")
+        # 如果初始化时提供路径，自动加载
+        if checkpoint_path is not None:
+            self.load_model(checkpoint_path)
     
-    def load_model(self, model_type, checkpoint_path):
-        """
-        加载MedSAM模型
-        
+    def load_model(self, checkpoint_path: str):
+        """加载MedSAM模型权重
         参数:
-            model_type: SAM模型类型
-            checkpoint_path: 权重文件路径
+            checkpoint_path (str): 必须提供的.pth权重文件路径
         """
-        if not os.path.exists(checkpoint_path):
-            raise FileNotFoundError(f"模型权重文件不存在: {checkpoint_path}")
+        # 参数验证
+        if not isinstance(checkpoint_path, str):
+            raise TypeError(f"需要字符串路径，收到 {type(checkpoint_path)}")
+        if not checkpoint_path.endswith('.pth'):
+            raise ValueError("权重文件必须是.pth格式")
             
-        print(f"加载MedSAM模型 ({model_type})，设备: {self.device}")
+        print(f"正在从 {checkpoint_path} 加载MedSAM权重...")
+        
         try:
-            self.model = sam_model_registry[model_type](checkpoint=checkpoint_path)
-            self.model.to(device=self.device)
+            # 初始化模型结构
+            self.model = sam_model_registry["vit_b"](checkpoint=checkpoint_path)
+            self.model.to(self.device)
             self.model.eval()
-            print(f"MedSAM模型加载成功")
+            print("MedSAM模型加载完成！")
         except Exception as e:
-            print(f"加载MedSAM模型时出错: {str(e)}")
-            raise
+            error_msg = f"""
+            加载模型失败，请检查：
+            1. 文件路径是否正确（当前路径：{os.path.abspath(checkpoint_path)}）
+            2. PyTorch版本是否匹配（当前版本：{torch.__version__})
+            3. 文件是否完整（建议MD5校验）
+            原始错误信息：{str(e)}
+            """
+            raise RuntimeError(error_msg)
     
     def preprocess_image(self, image):
         """

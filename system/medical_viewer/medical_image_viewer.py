@@ -1151,6 +1151,10 @@ class MedicalImageApp(QMainWindow):
                 QMessageBox.warning(self, "提示", f"模型权重文件不存在: {weights_path}")
                 return
             
+            print(f"当前使用的权重路径: {weights_path}")
+            print(f"路径是否存在: {os.path.exists(weights_path)}")
+            print(f"路径类型: {type(weights_path)}")
+            
             # 显示进度对话框
             progress_dialog = QMessageBox()
             progress_dialog.setIcon(QMessageBox.Information)
