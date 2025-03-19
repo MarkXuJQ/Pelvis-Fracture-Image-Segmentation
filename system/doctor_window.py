@@ -4,12 +4,12 @@ import pandas as pd
 from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 
-from system.medical_viewer.image_viewer_window import MedicalImageViewer
+from medical_viewer.image_viewer_window import MedicalImageViewer
 from delegate import TaskItemDelegate
 from fracture_edit import FractureHistoryDialog
 from stylesheet import apply_stylesheet
-from system.medical_viewer.xray_viewer import XRayViewer
-from system.medical_viewer.ct_viewer import CTViewer
+from medical_viewer.xray_viewer import XRayViewer
+from medical_viewer.ct_viewer import CTViewer
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QHeaderView, QListWidgetItem, QFileDialog, \
@@ -20,6 +20,7 @@ from sqlalchemy.orm import sessionmaker
 from chat_window import ChatApp
 from settings_dialog import SettingsDialog
 from database.db_config import db_config
+from medical_viewer.medical_image_viewer import MedicalImageApp
 
 # 创建数据库连接
 engine = create_engine(
@@ -81,6 +82,7 @@ class DoctorUI(QMainWindow):
         # 初始化表格
         self.load_data_from_database()
         self.load_unread_messages()
+
         # 应用样式表
         apply_stylesheet(self)
 
@@ -207,7 +209,7 @@ class DoctorUI(QMainWindow):
     def open_image_viewer(self, row):
         """打开医学图像查看窗口"""
         patient_id = self.tableWidget.item(row, 0).text()  # 获取病人 ID
-        self.viewer = MedicalImageViewer(patient_id)  # 创建医学图像查看窗口实例
+        self.viewer = MedicalImageApp(patient_id)
         self.viewer.show()
 
     def view_patient_details(self, patient_id):
@@ -269,7 +271,7 @@ class DoctorUI(QMainWindow):
 
         # 然后再将该项插入到最前面
         new_item = QListWidgetItem(formatted_patient_info)
-        new_item.setData(Qt.UserRole, (patient_id,fracture_date_origin))
+        new_item.setData(Qt.UserRole, (patient_id, fracture_date_origin))
         self.patientList.insertItem(0, new_item)
 
         # 设置选中对应的项
@@ -300,7 +302,7 @@ class DoctorUI(QMainWindow):
     def on_patient_item_clicked(self, item):
         # 获取点击项的文本内容
         patient_name = item.text()[5:]  # 提取病人姓名 (假设格式为 'MM.DD姓名')
-        patient_id,fracture_date = item.data(Qt.UserRole)
+        patient_id, fracture_date = item.data(Qt.UserRole)
         dialog = FractureHistoryDialog(patient_name, patient_id, fracture_date,self)
         dialog.exec_()
         self.reset_details()
@@ -503,6 +505,7 @@ class DoctorUI(QMainWindow):
         # 打开登录窗口
         self.login_window = LoginWindow()
         self.login_window.show()
+
 
 if __name__ == "__main__":
     import sys

@@ -16,6 +16,10 @@ import matplotlib.font_manager as fm
 import matplotlib.colors as mcolors
 import traceback  # 添加traceback模块导入
 import logging
+from medical_viewer.image_manager import ImageSelectionDialog
+from utils.download_thread import DownloadThread
+from utils.progress_dialog import UploadProgressDialog
+import tempfile
 
 # 减少各种库的日志输出
 logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
@@ -50,6 +54,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
+
 # 添加辅助函数
 def normalize_box(box, shape):
     """将框坐标归一化到[0,1]范围"""
@@ -60,6 +65,7 @@ def normalize_box(box, shape):
         box[2] / w,
         box[3] / h
     ], dtype=np.float64)
+
 
 def apply_ct_window(img, window_center=50, window_width=400):
     """应用CT窗宽窗位"""
@@ -73,7 +79,7 @@ class InteractiveCanvas(FigureCanvas):
     """支持点击和框选的交互式画布"""
     pointAdded = pyqtSignal(float, float, int)  # x, y, label (1=前景, 0=背景)
     boxDrawn = pyqtSignal(list)  # [x1, y1, x2, y2]
-    
+
     def __init__(self, figure=None):
         if figure is None:
             figure = Figure(figsize=(5, 5), dpi=100)
@@ -82,35 +88,35 @@ class InteractiveCanvas(FigureCanvas):
         self.axes.axis('off')
         self.setFocusPolicy(Qt.ClickFocus)
         self.setMouseTracking(True)
-        
+
         # 绑定事件
         self.mpl_connect('button_press_event', self.on_mouse_press)
         self.mpl_connect('button_release_event', self.on_mouse_release)
         self.mpl_connect('motion_notify_event', self.on_mouse_move)
-        
+
         # 交互状态
         self.box_mode = False
         self.drawing_box = False
         self.start_x = None
         self.start_y = None
         self.foreground_point = True  # True=前景点, False=背景点
-        
+
         # 可视化元素
         self.points_plotted = []  # 存储已绘制的点
         self.box_rect = None
         self.start_marker = None
         self.end_marker = None
         self.point_size = 10
-        
+
         # 数据
         self.points = []  # 存储 (x, y, label) 三元组
         self.current_image = None
-        
+
         # 添加存储已绘制框的列表
         self.box_rects = []  # 存储已绘制的所有框
         self.box_colors = ['red', 'blue', 'green', 'purple', 'orange', 'cyan', 'magenta', 'yellow']
         self.current_color_idx = 0  # 当前使用的颜色索引
-        
+
     def display_image(self, img):
         """显示图像"""
         self.axes.clear()
@@ -118,34 +124,34 @@ class InteractiveCanvas(FigureCanvas):
         self.points_plotted = []
         self.box_rects = []  # 清除已绘制的框
         self.current_image = img
-        
+
         if len(img.shape) == 3:  # 彩色图像
             self.axes.imshow(img)
         else:  # 灰度图像
             self.axes.imshow(img, cmap='gray')
-            
+
         self.axes.axis('off')
         self.draw_idle()
-        
+
     def display_mask(self, mask, alpha=0.3):
         """显示分割掩码"""
         if mask is None or self.current_image is None:
             return
-            
+
         # 显示掩码叠加
         self.axes.imshow(mask, alpha=alpha, cmap='viridis')
         self.draw_idle()
-        
+
     def set_box_mode(self, enabled):
         """设置是否处于框选模式"""
         self.box_mode = enabled
         if not enabled:
             self.clear_box()
-            
+
     def set_foreground_point(self, is_foreground):
         """设置是否为前景点"""
         self.foreground_point = is_foreground
-        
+
     def clear_points(self):
         """清除所有点"""
         for point in self.points_plotted:
@@ -154,60 +160,60 @@ class InteractiveCanvas(FigureCanvas):
         self.points_plotted = []
         self.points = []
         self.draw_idle()
-        
+
     def clear_box(self):
         """清除框"""
         if self.box_rect and self.box_rect in self.axes.patches:
             self.box_rect.remove()
             self.box_rect = None
-            
+
         if self.start_marker and self.start_marker in self.axes.patches:
             self.start_marker.remove()
             self.start_marker = None
-            
+
         if self.end_marker and self.end_marker in self.axes.patches:
             self.end_marker.remove()
             self.end_marker = None
-            
+
         # 清除所有已绘制的框
         for rect in self.box_rects:
             if rect in self.axes.patches:
                 rect.remove()
         self.box_rects = []
-            
+
         self.drawing_box = False
         self.start_x = None
         self.start_y = None
         self.draw_idle()
-        
+
     def set_current_color_index(self, idx):
         """设置当前使用的颜色索引"""
         self.current_color_idx = idx % len(self.box_colors)
-        
+
     def get_current_color(self):
         """获取当前使用的颜色"""
         return self.box_colors[self.current_color_idx]
-        
+
     def on_mouse_press(self, event):
         """鼠标按下事件"""
         if event.inaxes != self.axes or self.current_image is None:
             return
-            
+
         if self.box_mode:
             # 框选模式
             self.drawing_box = True
             self.start_x, self.start_y = event.xdata, event.ydata
-            
+
             # 获取当前颜色
             current_color = self.get_current_color()
-            
+
             # 绘制起始点
             if self.start_marker and self.start_marker in self.axes.patches:
                 self.start_marker.remove()
-                
+
             self.start_marker = plt.Circle(
-                (self.start_x, self.start_y), 
-                radius=self.point_size/2, 
+                (self.start_x, self.start_y),
+                radius=self.point_size / 2,
                 color=current_color,
                 fill=True,
                 alpha=0.7
@@ -217,7 +223,7 @@ class InteractiveCanvas(FigureCanvas):
         else:
             # 点击模式
             x, y = event.xdata, event.ydata
-            
+
             # 根据鼠标按键和设置确定标签
             if event.button == 1:  # 左键
                 label = 1 if self.foreground_point else 0
@@ -225,52 +231,52 @@ class InteractiveCanvas(FigureCanvas):
                 label = 0 if self.foreground_point else 1
             else:
                 return
-                
+
             # 绘制点
             color = 'green' if label == 1 else 'red'
             point = self.axes.plot(
-                x, y, 'o', 
+                x, y, 'o',
                 markersize=self.point_size,
                 markeredgecolor='black',
                 markerfacecolor=color,
                 alpha=0.7
             )[0]
-            
+
             self.points_plotted.append(point)
             self.points.append((x, y, label))
             self.pointAdded.emit(x, y, label)
             self.draw_idle()
-        
+
     def on_mouse_move(self, event):
         """鼠标移动事件"""
         if not self.drawing_box or not self.box_mode or event.inaxes != self.axes:
             return
-            
+
         # 获取当前颜色
         current_color = self.get_current_color()
-        
+
         # 更新结束点
         if self.end_marker and self.end_marker in self.axes.patches:
             self.end_marker.remove()
-            
+
         self.end_marker = plt.Circle(
-            (event.xdata, event.ydata), 
-            radius=self.point_size/2, 
+            (event.xdata, event.ydata),
+            radius=self.point_size / 2,
             color=current_color,
             fill=True,
             alpha=0.7
         )
         self.axes.add_patch(self.end_marker)
-        
+
         # 更新矩形
         if self.box_rect and self.box_rect in self.axes.patches:
             self.box_rect.remove()
-            
+
         x = min(self.start_x, event.xdata)
         y = min(self.start_y, event.ydata)
         width = abs(self.start_x - event.xdata)
         height = abs(self.start_y - event.ydata)
-        
+
         self.box_rect = mpatches.Rectangle(
             (x, y), width, height,
             linewidth=2,
@@ -280,23 +286,23 @@ class InteractiveCanvas(FigureCanvas):
         )
         self.axes.add_patch(self.box_rect)
         self.draw_idle()
-        
+
     def on_mouse_release(self, event):
         """鼠标释放事件"""
         if not self.drawing_box or not self.box_mode or event.inaxes != self.axes:
             return
-            
+
         self.drawing_box = False
-        
+
         # 计算框坐标
         x1 = min(self.start_x, event.xdata)
         y1 = min(self.start_y, event.ydata)
         x2 = max(self.start_x, event.xdata)
         y2 = max(self.start_y, event.ydata)
-        
+
         # 发送信号
         self.boxDrawn.emit([x1, y1, x2, y2])
-        
+
     def draw_saved_box(self, box, color_idx=0):
         """绘制保存的框"""
         x1, y1, x2, y2 = box
@@ -304,10 +310,10 @@ class InteractiveCanvas(FigureCanvas):
         y = min(y1, y2)
         width = abs(x2 - x1)
         height = abs(y2 - y1)
-        
+
         # 选择颜色
         color = self.box_colors[color_idx % len(self.box_colors)]
-        
+
         # 绘制框
         rect = mpatches.Rectangle(
             (x, y), width, height,
@@ -319,10 +325,10 @@ class InteractiveCanvas(FigureCanvas):
         self.axes.add_patch(rect)
         self.box_rects.append(rect)
         self.draw_idle()
-        
+
         # 返回使用的颜色
         return color
-        
+
     def draw_all_boxes(self, boxes):
         """绘制所有保存的框"""
         # 先清除之前的框
@@ -330,7 +336,7 @@ class InteractiveCanvas(FigureCanvas):
             if rect in self.axes.patches:
                 rect.remove()
         self.box_rects = []
-        
+
         # 绘制所有框
         for i, box in enumerate(boxes):
             self.draw_saved_box(box, i)
@@ -341,19 +347,19 @@ class InteractiveCanvas(FigureCanvas):
         for circle in self.points_plotted:
             if circle in self.axes.lines:
                 circle.remove()
-        
+
         self.points_plotted = []
         self.points = []
-        
+
         # 如果有新的点，则添加它们
         if points and labels and len(points) > 0 and len(labels) > 0:
             for i, (x, y) in enumerate(points):
                 if i < len(labels):  # 确保索引有效
                     label = labels[i]
                     self.add_circle(x, y, label)
-        
+
         self.draw_idle()  # 重绘画布
-    
+
     def name_to_rgb(self, color_name):
         """将颜色名称转换为RGB值"""
         color_map = {
@@ -367,13 +373,16 @@ class InteractiveCanvas(FigureCanvas):
         }
         return color_map.get(color_name, [255, 0, 0])  # 默认返回红色
 
+
 class MedicalImageApp(QMainWindow):
-    def __init__(self):
+    def __init__(self, patient_id=None):
         super().__init__()
-        
+        self.patient_id = patient_id
+
         # 设置窗口属性
         self.setWindowTitle("医学图像分割应用")
         self.resize(1200, 800)
+
         
         # 设置较大的字体
         font = self.font()
@@ -412,7 +421,7 @@ class MedicalImageApp(QMainWindow):
                 font-size: 10pt;
             }
         """)
-        
+
         # 状态变量
         self.processor = MedicalImageProcessor()
         self.available_models = list_available_models()
@@ -423,36 +432,42 @@ class MedicalImageApp(QMainWindow):
         self.box_colors = []  # 框颜色
         self.box_masks = []  # 每个框对应的掩码
         self.current_slice = 0  # 当前3D图像切片
-        
+
         # 添加三视图相关变量
         self.current_view = 'axial'  # 当前活动视图: 'axial', 'coronal', 'sagittal'
         self.axial_slice = 0
         self.coronal_slice = 0
         self.sagittal_slice = 0
-        
+
         # 初始化UI
         self.initUI()
-        
+
     def initUI(self):
         # 创建中央部件和主布局
         central_widget = QWidget()
         main_layout = QHBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
-        
+
         # 创建左侧控制面板
         control_panel = QWidget()
         control_panel.setFixedWidth(250)  # 设置控制面板宽度
         control_layout = QVBoxLayout(control_panel)
         control_layout.setSpacing(15)
-        
+
         # 1. 文件操作按钮
         file_group = QGroupBox("文件操作")
         file_layout = QVBoxLayout(file_group)
-        
+
+        # **添加 "打开图像" 按钮**
         open_btn = QPushButton("打开图像")
-        open_btn.clicked.connect(self.open_image)
+        open_btn.clicked.connect(self.open_image_from_db)  # ✅ 绑定数据库中的图像选择
         file_layout.addWidget(open_btn)
-        
+
+        # **添加 "打开文件夹" 按钮**
+        select_file_btn = QPushButton("打开文件夹")
+        select_file_btn.clicked.connect(self.open_image)  # ✅ 绑定 open_image 方法
+        file_layout.addWidget(select_file_btn)
+
         self.save_btn = QPushButton("保存结果")
         self.save_btn.clicked.connect(self.save_result)
         self.save_btn.setEnabled(False)
@@ -907,7 +922,7 @@ class MedicalImageApp(QMainWindow):
                 # 显示彩色掩码
                 self.result_ax.imshow(colored_mask)
         else:
-            # 单个掩码，使用标准显示方式
+            # 单个掩码，使用改进的显示方式
             # 先显示原始图像
             self.result_ax.imshow(current_slice, cmap='gray')
             
@@ -926,87 +941,222 @@ class MedicalImageApp(QMainWindow):
         
         self.result_ax.axis('off')
         self.result_canvas.draw()
-    
+
+    def open_image_from_db(self):
+        """ 打开病人的医学图像选择窗口 """
+        if not self.patient_id:
+            QMessageBox.warning(self, "错误", "无法获取病人ID")
+            return
+
+        # 创建并显示选择对话框
+        dialog = ImageSelectionDialog(self.patient_id, self)
+        if dialog.exec_() == QDialog.Accepted:
+            print(1)
+            selected_image_path = dialog.selected_image_path
+            if selected_image_path:
+                self.load_selected_image(selected_image_path)
+
+    def load_selected_image(self, image_path):
+        """从数据库下载图像"""
+        try:
+            # **创建临时文件存储下载的图像**
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mha') as temp_file:
+                temp_path = temp_file.name
+
+            # **显示下载进度**
+            self.progress_dialog = UploadProgressDialog(self)
+            self.progress_dialog.setWindowTitle("下载进度")
+            self.progress_dialog.status_label.setText("正在下载图像...")
+            self.progress_dialog.show()
+
+            # **创建下载线程**
+            self.download_thread = DownloadThread(image_path, temp_path)
+            self.download_thread.progress.connect(self.progress_dialog.update_progress)
+            self.download_thread.finished.connect(
+                lambda success, message: self.on_download_finished(temp_path, success, message)
+            )
+            self.download_thread.start()
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"加载图像失败：{str(e)}")
+
+    def on_download_finished(self, temp_path, success, message):
+        """下载完成后，自动检测图像类型并更新 UI"""
+        try:
+            if hasattr(self, 'progress_dialog'):
+                self.progress_dialog.close()
+                self.progress_dialog.deleteLater()
+
+            if success:
+                # **使用 MedicalImageProcessor 读取图像**
+                self.processor.load_image(temp_path)
+                try:
+
+                    # 清除之前的分割结果
+                    self.mask = None
+                    self.points = []
+                    self.boxes = []
+
+                    # 重置视图变量
+                    self.axial_slice = 0
+                    self.coronal_slice = 0
+                    self.sagittal_slice = 0
+
+                    # 更新显示
+                    if self.processor.is_3d:
+                        print("✅ 3D 图像加载成功")
+
+                        # 如果是3D图像，设置切片控制器
+                        depth, height, width = self.processor.image_data.shape
+
+                        # 显示3D视图控制面板
+                        self.view_control_group.setVisible(True)
+
+                        # 隐藏Gamma控制面板
+                        self.gamma_group.setVisible(False)
+
+                        # 设置默认为轴状视图，更新滑块
+                        self.view_type_combo.setCurrentIndex(0)
+                        self.current_view = 'axial'
+                        self.slice_slider.setMaximum(depth - 1)
+                        self.slice_slider.setValue(0)
+                        self.slice_label.setText(f"切片: 0/{depth - 1}")
+
+                        # 显示初始切片
+                        self.update_display()
+                    else:
+                        print("✅ 2D 图像加载成功")
+
+                        # 如果是2D图像，隐藏切片控制器，显示Gamma控制器
+                        self.view_control_group.setVisible(False)
+
+                        # 检查是否可能是X光图像
+                        is_xray = self._check_if_xray(self.processor.image_data)
+
+                        # 显示Gamma控制面板
+                        self.gamma_group.setVisible(True)
+
+                        # 对于X光图像，设置推荐的初始gamma值
+                        if is_xray:
+                            self.gamma_slider.setValue(30)  # 3.0
+                        else:
+                            self.gamma_slider.setValue(20)  # 2.0
+                        self.on_gamma_changed(self.gamma_slider.value())
+
+                        # 显示图像
+                        self.original_view.display_image(self.processor.image_data)
+
+                    # 启用保存按钮
+                    self.save_btn.setEnabled(True)
+
+                    # 更新界面状态
+                    selected_model = self.model_selector.currentText().split(':')[0]
+                    self.prompt_group.setVisible(selected_model == 'medsam')
+
+                    # 更新3D查看按钮状态
+                    self.view_3d_btn.setEnabled(self.processor.is_3d and self.mask is not None)
+
+                except Exception as e:
+                    QMessageBox.critical(self, "错误", f"无法加载图像: {str(e)}")
+
+            #     # **自动检测 3D / 2D**
+            #     if self.processor.is_3d:
+            #         print("✅ 3D 图像加载成功")
+            #     else:
+            #         print("✅ 2D 图像加载成功")
+            #
+            #     QMessageBox.information(self, "成功", "图像加载完成！")
+            #
+            # else:
+            #     QMessageBox.critical(self, "错误", f"下载失败：{message}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"显示图像失败：{str(e)}")
+
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
     def open_image(self):
         """打开医学图像文件"""
         options = QFileDialog.Options()
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "打开医学图像", "", 
-            "医学图像 (*.mha *.nii *.nii.gz *.dcm *.png *.jpg *.tif);;所有文件 (*)", 
+            self, "打开医学图像", "",
+            "医学图像 (*.mha *.nii *.nii.gz *.dcm *.png *.jpg *.tif);;所有文件 (*)",
             options=options
         )
-        
+
         if not file_path:
             return
-            
+
         try:
             # 加载图像
             self.processor.load_image(file_path)
-            
+
             # 清除之前的分割结果
             self.mask = None
             self.points = []
             self.boxes = []
-            
+
             # 重置视图变量
             self.axial_slice = 0
             self.coronal_slice = 0
             self.sagittal_slice = 0
-            
+
             # 更新显示
             if self.processor.is_3d:
                 # 如果是3D图像，设置切片控制器
                 depth, height, width = self.processor.image_data.shape
-                
+
                 # 显示3D视图控制面板
                 self.view_control_group.setVisible(True)
-                
+
                 # 隐藏Gamma控制面板
                 self.gamma_group.setVisible(False)
-                
+
                 # 设置默认为轴状视图，更新滑块
                 self.view_type_combo.setCurrentIndex(0)
                 self.current_view = 'axial'
                 self.slice_slider.setMaximum(depth - 1)
                 self.slice_slider.setValue(0)
                 self.slice_label.setText(f"切片: 0/{depth - 1}")
-                
+
                 # 显示初始切片
                 self.update_display()
             else:
                 # 如果是2D图像，隐藏切片控制器，显示Gamma控制器
                 self.view_control_group.setVisible(False)
-                
+
                 # 检查是否可能是X光图像
                 is_xray = self._check_if_xray(self.processor.image_data)
-                
+
                 # 显示Gamma控制面板
                 self.gamma_group.setVisible(True)
-                
+
                 # 对于X光图像，设置推荐的初始gamma值
                 if is_xray:
                     self.gamma_slider.setValue(30)  # 3.0
                 else:
                     self.gamma_slider.setValue(20)  # 2.0
                 self.on_gamma_changed(self.gamma_slider.value())
-                
+
                 # 显示图像
                 self.original_view.display_image(self.processor.image_data)
-                
+
             # 启用保存按钮
             self.save_btn.setEnabled(True)
-            
+
             # 更新界面状态
             selected_model = self.model_selector.currentText().split(':')[0]
             self.prompt_group.setVisible(selected_model == 'medsam')
-            
+
             # 更新3D查看按钮状态
             self.view_3d_btn.setEnabled(self.processor.is_3d and self.mask is not None)
-            
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"无法加载图像: {str(e)}")
             traceback.print_exc()
-    
+
     def _check_if_xray(self, image):
         """检查图像是否可能是X光图像"""
         # 简单启发式方法：检查图像特征
@@ -1019,15 +1169,15 @@ class MedicalImageApp(QMainWindow):
         elif len(image.shape) == 3:
             # 检查RGB图像是否近似灰度（如果是X光的RGB表示）
             r, g, b = image[:, :, 0], image[:, :, 1], image[:, :, 2]
-            if np.abs(np.mean(r-g)) < 5 and np.abs(np.mean(r-b)) < 5 and np.abs(np.mean(g-b)) < 5:
+            if np.abs(np.mean(r - g)) < 5 and np.abs(np.mean(r - b)) < 5 and np.abs(np.mean(g - b)) < 5:
                 return True
         return False
-    
+
     def on_gamma_changed(self, value):
         """处理gamma值滑块变化"""
         gamma = value / 10.0  # 滑块值转换为gamma值
         self.gamma_value_label.setText(f"Gamma值: {gamma:.1f}")
-        
+
         if hasattr(self, 'processor') and self.processor.image_data is not None and not self.processor.is_3d:
             # 保存原始图像
             if not hasattr(self, 'original_image_backup'):
@@ -1035,109 +1185,112 @@ class MedicalImageApp(QMainWindow):
             else:
                 # 恢复原始图像，然后应用新的gamma
                 self.processor.image_data = self.original_image_backup.copy()
-            
+
             # 应用gamma校正
             self.processor.apply_gamma_correction(gamma)
-            
+
             # 更新显示
             self.original_view.display_image(self.processor.image_data)
-            
+
             # 如果有分割结果，也更新分割结果显示
             if self.mask is not None:
                 self.display_result(self.processor.image_data)
-    
+
     def reset_gamma(self):
         """重置为推荐的gamma值"""
         # 检查图像是否可能是X光
         if hasattr(self, 'processor') and self.processor.image_data is not None:
-            is_xray = self._check_if_xray(self.original_image_backup if hasattr(self, 'original_image_backup') else self.processor.image_data)
-            
+            is_xray = self._check_if_xray(
+                self.original_image_backup if hasattr(self, 'original_image_backup') else self.processor.image_data)
+
             # 设置推荐值
             if is_xray:
                 recommended_value = 30  # 3.0
             else:
                 recommended_value = 20  # 2.0
-                
+
             self.gamma_slider.setValue(recommended_value)
             # on_gamma_changed会自动被调用
-        
+
     def on_point_added(self, x, y, label):
         """当添加一个点时调用"""
         # 存储点和标签
         self.points.append((x, y))
         self.point_labels.append(label)
-        
+
         # 更新UI状态
         self.clear_points_btn.setEnabled(True)
-        
+
     def on_box_drawn(self, box):
         """处理框选事件"""
         self.boxes.append(box)
-        
+
         # 使用当前颜色索引绘制框
         current_color_idx = self.original_view.current_color_idx
         color = self.original_view.draw_saved_box(box, current_color_idx)
         self.box_colors.append(color)
-        
+
         # 准备下一个框的颜色索引
         next_color_idx = (current_color_idx + 1) % len(self.original_view.box_colors)
         self.original_view.set_current_color_index(next_color_idx)
-        
+
         # 启用清除按钮
         self.clear_box_btn.setEnabled(True)
         self.clear_last_box_btn.setEnabled(True)
-    
+
     def clear_box(self):
         """清除所有框"""
         self.boxes = []
         self.box_colors = []
         self.box_masks = []
         self.original_view.clear_box()
-        
+
         # 更新按钮状态
         self.clear_box_btn.setEnabled(False)
         self.clear_last_box_btn.setEnabled(False)
-        
+
         # 更新显示
         self.update_display()
-    
+
     def clear_last_box(self):
         """清除最后一个框"""
         if not self.boxes:
             return
-            
+
         # 移除最后一个框
         self.boxes.pop()
         if self.box_colors:
             self.box_colors.pop()
         if self.box_masks:
             self.box_masks.pop()
-        
+
         # 清除所有框，然后重新绘制剩余的框
         self.original_view.clear_box()
         for i, box in enumerate(self.boxes):
             self.original_view.draw_saved_box(box, i)
-            
+
         # 更新按钮状态
         self.clear_box_btn.setEnabled(bool(self.boxes))
         self.clear_last_box_btn.setEnabled(bool(self.boxes))
-        
+
         # 更新显示
         self.update_display()
-    
+
     def segment_image(self):
         """使用选定的模型分割图像"""
         # 获取当前选择的模型
         selected_text = self.model_selector.currentText()
         selected_model = selected_text.split(':')[0]
-        
+
         # 检查是否有图像
         if not hasattr(self, 'processor') or self.processor.image_data is None:
             QMessageBox.warning(self, "提示", "请先加载图像")
             return
+
             
         # 创建进度对话框
         progress_dialog = None
+
         try:
             # 设置模型
             print(f"开始使用 {selected_model} 进行分割...")
@@ -1145,6 +1298,7 @@ class MedicalImageApp(QMainWindow):
             if not model_info:
                 QMessageBox.warning(self, "提示", f"未找到模型: {selected_model}")
                 return
+
             
             weights_path = model_info.get('weights_path')
             if not weights_path or not os.path.exists(weights_path):
@@ -1167,10 +1321,12 @@ class MedicalImageApp(QMainWindow):
             QApplication.processEvents()
             
             # 设置分割模型
+
             self.processor.set_segmentation_model(
                 model_name=selected_model,
                 checkpoint_path=weights_path
             )
+
             
             # 对于MedSAM，确保显式调用load_model
             if selected_model == 'medsam' and hasattr(self.processor.segmenter, 'load_model'):
@@ -1185,7 +1341,7 @@ class MedicalImageApp(QMainWindow):
             # 更新进度对话框
             progress_dialog.setText(f"正在使用{selected_model}进行分割，请稍候...")
             QApplication.processEvents()
-            
+
             # 获取当前图像切片
             if self.processor.is_3d:
                 if self.current_view == 'axial':
@@ -1198,10 +1354,10 @@ class MedicalImageApp(QMainWindow):
                     image_slice = np.rot90(image_slice, k=2)
             else:
                 image_slice = self.processor.image_data
-            
+
             # 清空框掩码
             self.box_masks = []
-            
+
             # ===== MedSAM 分割路径 =====
             if selected_model == 'medsam':
                 # 确认模型已加载
@@ -1213,15 +1369,30 @@ class MedicalImageApp(QMainWindow):
                 points_array = np.array(self.points) if self.points else None
                 labels_array = np.array(self.point_labels) if self.point_labels else None
                 boxes_array = np.array(self.boxes) if self.boxes else None
-                
+
                 if boxes_array is not None and len(boxes_array) > 0:
                     # 如果有多个框，处理每个框
                     combined_mask = np.zeros_like(image_slice, dtype=bool)
-                    
+
                     for i, box in enumerate(boxes_array):
                         print(f"处理MedSAM框 {i+1}/{len(boxes_array)}: {box}")
-                        
+
                         # MedSAM使用原始接口
+
+                        mask = self.processor.segmenter.segment(
+                            image_slice,
+                            points=points_array,
+                            point_labels=labels_array,
+                            box=box
+                        )
+
+                        # 保存每个框的掩码
+                        self.box_masks.append(mask)
+
+                        # 更新组合掩码
+                        combined_mask = np.logical_or(combined_mask, mask > 0)
+
+
                         try:
                             mask = self.processor.segmenter.segment(
                                 image_slice,
@@ -1240,12 +1411,23 @@ class MedicalImageApp(QMainWindow):
                             QMessageBox.warning(self, "警告", f"处理框 {i+1} 时出错: {str(e)}")
                             traceback.print_exc()
                             continue
-                    
+
                     # 将布尔掩码转换为uint8
                     self.mask = (combined_mask * 255).astype(np.uint8)
                 else:
                     # 只使用点提示或不使用任何提示
                     print(f"使用MedSAM模型进行分割，无框提示")
+
+                    mask = self.processor.segmenter.segment(
+                        image_slice,
+                        points=points_array,
+                        point_labels=labels_array
+                    )
+
+                    # 保存掩码
+                    self.mask = mask
+                    self.box_masks = [mask]
+
                     
                     try:
                         mask = self.processor.segmenter.segment(
@@ -1262,32 +1444,33 @@ class MedicalImageApp(QMainWindow):
                         QMessageBox.warning(self, "警告", f"分割出错: {str(e)}")
                         traceback.print_exc()
 
+
             # ===== DeepLabV3 分割路径 =====
             elif selected_model == 'deeplabv3':
                 print("使用DeepLabV3进行分割")
-                
+
                 # DeepLabV3 不使用点标记或框，直接进行分割
                 # 设置raw_output=True获取原始多类别预测，便于后处理
                 use_raw_output = True
-                
+
                 # 执行分割
                 multi_class_mask = self.processor.segmenter.segment(
                     image_slice,
                     raw_output=use_raw_output
                 )
-                    
+
                 if multi_class_mask is not None:
                     print(f"DeepLabV3分割完成，类别范围: {np.min(multi_class_mask)} - {np.max(multi_class_mask)}")
                     # 创建二值掩码 (非背景为前景)
                     binary_mask = (multi_class_mask > 0).astype(np.uint8) * 255
-                    
+
                     # 保存掩码
                     self.mask = binary_mask
                     self.box_masks = [binary_mask]
                 else:
                     print("DeepLabV3分割失败，返回了空掩码")
                     QMessageBox.warning(self, "警告", "分割失败，返回了空掩码")
-            
+ 
             # ===== UNet3D 分割路径 =====
             elif selected_model == 'unet3d':
                 print("使用UNet3D (UNETR)进行分割")
@@ -1344,37 +1527,40 @@ class MedicalImageApp(QMainWindow):
                     QMessageBox.critical(self, "错误", f"UNet3D分割出错: {str(e)}")
                     traceback.print_exc()
             
+
             # 更新显示
             self.update_display()
-            
+
             # 启用3D查看按钮
             self.view_3d_btn.setEnabled(self.processor.is_3d and self.mask is not None)
-            
+
             print("分割完成！")
-            
+
         except Exception as e:
             print(f"分割时出错: {str(e)}")
             traceback.print_exc()
+
             QMessageBox.critical(self, "错误", f"分割时出错: {str(e)}")
         finally:
             # 确保在任何情况下都关闭进度对话框
             if progress_dialog and progress_dialog.isVisible():
                 progress_dialog.close()
     
+
     def save_result(self):
         """保存分割结果"""
         if self.mask is None:
             QMessageBox.warning(self, "提示", "没有分割结果可保存")
             return
-            
+
         options = QFileDialog.Options()
         file_path, _ = QFileDialog.getSaveFileName(
             self, "保存分割结果", "", "NIFTI文件 (*.nii.gz);;PNG图像 (*.png);;所有文件 (*)", options=options
         )
-        
+
         if not file_path:
             return
-            
+
         try:
             # 保存掩码
             self.processor.save_mask(self.mask, file_path)
@@ -1387,34 +1573,34 @@ class MedicalImageApp(QMainWindow):
         if not hasattr(self, 'processor') or not self.processor.image_data is not None:
             QMessageBox.warning(self, "错误", "请先加载图像")
             return
-        
+
         if not self.processor.is_3d:
             QMessageBox.warning(self, "错误", "只有3D图像才能以3D方式查看")
             return
-        
+
         # 获取当前选择的模型
         current_model = self.model_selector.currentText() if hasattr(self, 'model_selector') else None
-        
+
         # 检查是否是支持3D的模型
         if current_model and not self.is_3d_capable_model(current_model):
-            QMessageBox.information(self, "提示", 
+            QMessageBox.information(self, "提示",
                                   f"当前选择的 {current_model} 模型不支持3D显示。\n"
                                   "请使用 3D U-Net 或其他3D分割模型。")
             return
-        
+
         # 创建3D查看器
         if not hasattr(self, 'vtk_viewer'):
             self.vtk_viewer = VTK3DViewer()
-        
+
         # 获取当前图像数据
         volume = self.processor.image_data
-        
+
         # 如果已经有掩码，也加载它
         mask = self.current_mask if hasattr(self, 'current_mask') and self.current_mask is not None else None
-        
+
         # 设置数据
         self.vtk_viewer.set_volume_data(volume, mask)
-        
+
         # 显示3D查看器
         self.vtk_viewer.setWindowTitle("3D医学图像查看器")
         self.vtk_viewer.resize(800, 600)
@@ -1434,4 +1620,4 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MedicalImageApp()
     window.show()
-    sys.exit(app.exec_()) 
+    sys.exit(app.exec_())

@@ -14,10 +14,10 @@ import traceback
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 导入分割模型
-from system.medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
-from system.medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
-from .segmenters.unet_3d_segmenter import UNet3DSegmenter
+from medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
+from medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
+from medical_viewer.segmenters.unet_3d_segmenter import UNet3DSegmenter  # 确保路径一致
+
 
 class MedicalImageProcessor:
     """医学图像处理类，提供加载、显示和基础处理功能"""
@@ -84,9 +84,23 @@ class MedicalImageProcessor:
         
         # 转换为numpy数组
         self.image_data = sitk.GetArrayFromImage(sitk_image)
-        self.is_3d = True
-        
-        print(f"已加载3D图像: 形状={self.image_data.shape}")
+        # self.is_3d = True
+        #
+        # print(f"已加载3D图像: 形状={self.image_data.shape}")
+
+        if len(self.image_data.shape) == 2:
+            print("⚠️ 误判为 3D，实际上是 2D，重新加载")
+            self._load_2d_image(image_path)
+            return
+
+        if self.image_data.shape[0] == 1:  # 只有 1 个切片
+            print("⚠️ 误判为 3D，实际上是 2D，自动转换")
+            self.image_data = self.image_data[0]  # 变成 (H, W)
+            self.is_3d = False
+        else:
+            self.is_3d = True
+
+        print(f"✅ 3D 图像, 形状={self.image_data.shape}")
     
     def _load_2d_image(self, image_path: str) -> None:
         """加载2D医学图像"""
