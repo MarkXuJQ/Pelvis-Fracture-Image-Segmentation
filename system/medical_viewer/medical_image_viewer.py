@@ -908,8 +908,19 @@ class MedicalImageApp(QMainWindow):
                     mask_i_slice = mask
                 
                 # 创建彩色掩码
-                color_name = self.original_view.box_colors[i]
-                color_rgb = self.original_view.name_to_rgb(color_name)
+                if i < len(self.box_colors):
+                    # 直接使用已保存的框颜色
+                    color_name = self.box_colors[i]
+                    # 如果保存的是颜色名称字符串而非RGB值
+                    if isinstance(color_name, str):
+                        color_rgb = self.original_view.name_to_rgb(color_name)
+                    else:
+                        # 如果已经是RGB元组
+                        color_rgb = color_name
+                else:
+                    # 如果没有对应的框颜色，使用默认颜色序列
+                    color_name = self.original_view.box_colors[i % len(self.original_view.box_colors)]
+                    color_rgb = self.original_view.name_to_rgb(color_name)
                 
                 # 创建彩色掩码数组
                 h, w = mask_i_slice.shape
@@ -1377,22 +1388,6 @@ class MedicalImageApp(QMainWindow):
                     for i, box in enumerate(boxes_array):
                         print(f"处理MedSAM框 {i+1}/{len(boxes_array)}: {box}")
 
-                        # MedSAM使用原始接口
-
-                        mask = self.processor.segmenter.segment(
-                            image_slice,
-                            points=points_array,
-                            point_labels=labels_array,
-                            box=box
-                        )
-
-                        # 保存每个框的掩码
-                        self.box_masks.append(mask)
-
-                        # 更新组合掩码
-                        combined_mask = np.logical_or(combined_mask, mask > 0)
-
-
                         try:
                             mask = self.processor.segmenter.segment(
                                 image_slice,
@@ -1401,7 +1396,7 @@ class MedicalImageApp(QMainWindow):
                                 box=box
                             )
                             
-                            # 保存每个框的掩码
+                            # 保存每个框的掩码，确保顺序与框的顺序一致
                             self.box_masks.append(mask)
                             
                             # 更新组合掩码

@@ -345,7 +345,7 @@ class MedicalImageProcessor:
             
             print(f"MedSAM模型已成功初始化，使用设备: {self.segmenter.device}")
         elif model_name == 'deeplabv3':
-            self.segmenter = DeeplabV3Segmenter(checkpoint_path=kwargs.get('checkpoint_path'), device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
+            self.segmenter = DeeplabV3Segmenter(checkpoint_path, device=device)
             print(f"已设置DeepLabV3分割器，使用设备: {self.segmenter.device}")
         elif model_name == 'unet3d':
             # 创建UNet3D分割器并传递权重路径和设备
