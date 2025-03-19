@@ -181,6 +181,7 @@ class DeeplabV3Segmenter:
     def __init__(self, weights_path=None, device=None, output_dir=None):
         """初始化 DeepLabV3 分割器"""
         print("==== 初始化DeepLabV3分割器 ====")
+        print(f"权重路径: {weights_path}")
         
         # 设置设备
         self.device = device if device is not None else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -189,10 +190,13 @@ class DeeplabV3Segmenter:
         self.output_dir = output_dir if output_dir is not None else os.path.join(os.path.dirname(__file__), 'outputs')
         os.makedirs(self.output_dir, exist_ok=True)
         
+        # 设置类别数量
+        self.num_classes = 24  # 确保这个值与模型匹配
+
         # 创建模型
         try:
             # 创建模型，24类分割
-            self.model = self._create_model(num_classes=24)
+            self.model = self._create_model(num_classes=self.num_classes)
             print(f"模型创建成功 - 类型: {type(self.model)}")
             
             # 尝试加载权重
@@ -316,7 +320,7 @@ class DeeplabV3Segmenter:
             print(f"执行DeepLabV3分割，原始图像尺寸: {original_shape}")
             
             # 预处理图像
-            input_tensor = self._preprocess_image(image)
+            input_tensor, _ = self.preprocess(image)
             if input_tensor is None:
                 raise ValueError("图像预处理失败")
             
@@ -325,12 +329,21 @@ class DeeplabV3Segmenter:
             
             # 前向传播
             with torch.no_grad():
-                output = self.model(input_tensor)['out']
+                # 将输入移动到设备
+                input_tensor = input_tensor.to(self.device)
                 
-                # DeepLabV3返回的是logits，需要通过softmax获取概率
+                # 执行推理
+                output = self.model(input_tensor)
+                
+                # 根据模型输出类型获取结果
+                if isinstance(output, dict) and 'out' in output:
+                    logits = output['out']
+                else:
+                    logits = output
+                
                 if raw_output:
                     # 获取类别预测
-                    predictions = torch.argmax(output, dim=1).squeeze().cpu().numpy()
+                    predictions = torch.argmax(logits, dim=1).squeeze().cpu().numpy()
                     
                     # 调整预测结果大小，与输入图像一致
                     if predictions.shape != original_shape:
@@ -345,22 +358,30 @@ class DeeplabV3Segmenter:
                     print(f"分割完成，输出形状: {predictions.shape}")
                     return predictions
                 else:
-                    # 获取前景概率（假设前景是类别1）
-                    probabilities = torch.softmax(output, dim=1)
-                    foreground_probs = probabilities[0, 1].cpu().numpy()
+                    # 获取前景概率（假设非背景为前景）
+                    probabilities = torch.softmax(logits, dim=1)
+                    background_prob = probabilities[0, 0]  # 背景类通常是第0类
+                    
+                    # 计算所有非背景类的总概率
+                    foreground_prob = torch.zeros_like(background_prob)
+                    for i in range(1, self.num_classes):
+                        foreground_prob += probabilities[0, i]
+                    
+                    # 转到CPU并获取numpy数组
+                    foreground_prob = foreground_prob.cpu().numpy()
                     
                     # 调整预测结果大小，与输入图像一致
-                    if foreground_probs.shape != original_shape:
-                        print(f"调整概率图形状，从 {foreground_probs.shape} 到 {original_shape}")
+                    if foreground_prob.shape != original_shape:
+                        print(f"调整概率图形状，从 {foreground_prob.shape} 到 {original_shape}")
                         import cv2
-                        foreground_probs = cv2.resize(
-                            foreground_probs, 
+                        foreground_prob = cv2.resize(
+                            foreground_prob, 
                             (original_shape[1], original_shape[0]),
                             interpolation=cv2.INTER_LINEAR
                         )
                     
                     # 二值化
-                    mask = (foreground_probs > 0.5).astype(np.uint8) * 255
+                    mask = (foreground_prob > 0.5).astype(np.uint8) * 255
                     
                     print(f"分割完成，输出形状: {mask.shape}")
                     return mask
@@ -384,8 +405,14 @@ class DeeplabV3Segmenter:
                 self.model.eval()
                 outputs = self.model(input_tensor)
                 
+                # 根据模型输出类型获取结果
+                if isinstance(outputs, dict) and 'out' in outputs:
+                    logits = outputs['out']
+                else:
+                    logits = outputs
+                
                 # 使用softmax获取类别概率
-                probs = F.softmax(outputs, dim=1)
+                probs = F.softmax(logits, dim=1)
                 
                 # 获取所有非背景类的概率总和
                 foreground_prob = torch.zeros_like(probs[:, 0])
@@ -406,6 +433,7 @@ class DeeplabV3Segmenter:
             
         except Exception as e:
             print(f"获取概率图时出错: {str(e)}")
+            traceback.print_exc()
             if len(image.shape) == 2:
                 return np.zeros(image.shape, dtype=np.float32)
             else:
