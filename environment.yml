@@ -1,0 +1,31 @@
+name: pelvis_seg
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch=2.3.1
+  - pytorch-cuda=12.1
+  - torchvision
+  - torchaudio
+  - pyqt
+  - vtk=9.2.2
+  - simpleitk
+  - numpy
+  - matplotlib
+  - scipy
+  - scikit-image
+  - scikit-learn
+  - pandas
+  - nibabel
+  - pillow
+  - dicom2nifti
+  - tqdm
+  - monai
+  - pip
+  - pip:
+    - pydicom
+    - pynrrd
+    - nnunetv2
+    - opencv-python 

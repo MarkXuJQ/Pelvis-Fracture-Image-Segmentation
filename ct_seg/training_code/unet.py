@@ -268,8 +268,9 @@ def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1
         epoch_loss = 0
         step = 0
         
-        # 添加进度条显示，减少终端输出
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}", unit="批次")
+        # 添加进度条显示，但减少更新频率
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}", unit="批次", 
+                           mininterval=10.0)  # 增加最小更新间隔为10秒
         
         for batch_data in progress_bar:
             step += 1
@@ -290,19 +291,20 @@ def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1
             epoch_loss += loss.item()
             global_step += 1
             
-            # 更新进度条显示状态
-            progress_bar.set_postfix({
-                '迭代': f"{global_step}/{max_iter}",
-                'loss': f"{loss.item():.4f}",
-                'avg_loss': f"{epoch_loss / step:.4f}"
-            })
+            # 仅在步数为100的倍数时更新进度条显示详情
+            if global_step % 100 == 0:
+                progress_bar.set_postfix({
+                    '迭代': f"{global_step}/{max_iter}",
+                    'loss': f"{loss.item():.4f}",
+                    'avg_loss': f"{epoch_loss / step:.4f}"
+                })
             
             # 保存损失记录
-            if global_step % 20 == 0:
+            if global_step % 200 == 0:  # 增加到每200步记录一次
                 epoch_loss_values.append(epoch_loss / step)
                 
-            # 每100步评估一次，减少评估频率提高训练速度
-            if global_step % 100 == 0:
+            # 每1000步评估一次，降低评估频率提高训练速度
+            if global_step % 1000 == 0:
                 # 清理GPU缓存
                 torch.cuda.empty_cache()
                 
@@ -317,32 +319,31 @@ def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1
                     torch.save(model.state_dict(), os.path.join(root_dir, "best_metric_model.pth"))
                     print(f"\n新最佳模型! 步骤: {global_step}, Dice: {dice_val:.4f}")
                 
-                # 每500步打印详细评估信息
-                if global_step % 500 == 0:
-                    print(f"\n评估 @ 步骤 {global_step} - Dice: {dice_val:.4f}, 最佳: {dice_val_best:.4f}")
+                # 打印评估信息
+                print(f"\n评估 @ 步骤 {global_step} - Dice: {dice_val:.4f}, 最佳: {dice_val_best:.4f}")
                 
                 # 恢复训练模式
                 model.train()
                 
                 # 定期保存检查点，以防训练中断
-                if global_step % 500 == 0:
-                    torch.save(
-                        {
-                            "global_step": global_step,
-                            "model_state_dict": model.state_dict(),
-                            "optimizer_state_dict": optimizer.state_dict(),
-                            "dice_val_best": dice_val_best,
-                            "global_step_best": global_step_best,
-                        },
-                        os.path.join(root_dir, f"checkpoint_{global_step}.pth"),
-                    )
+                torch.save(
+                    {
+                        "global_step": global_step,
+                        "model_state_dict": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "dice_val_best": dice_val_best,
+                        "global_step_best": global_step_best,
+                    },
+                    os.path.join(root_dir, f"checkpoint_{global_step}.pth"),
+                )
             
             # 达到最大迭代次数则提前结束
             if global_step >= max_iter:
                 break
         
-        # 每个epoch结束后打印总结
-        print(f"\nEpoch {epoch} 完成 - 平均损失: {epoch_loss / step:.4f}")
+        # 每个epoch结束后只打印简短总结
+        if epoch % 5 == 0:  # 每5个epoch打印一次而不是每个都打印
+            print(f"Epoch {epoch} - 平均损失: {epoch_loss / step:.4f}")
     
     # 返回训练结果
     return global_step, dice_val_best, global_step_best
@@ -519,7 +520,7 @@ if __name__ == '__main__':
     print(f"{'='*50}\n")
     
     # 将主要执行代码移到这里
-    max_iterations = 5000  # 减少迭代次数以便更快完成训练测试
+    max_iterations = 25000  # 减少迭代次数以便更快完成训练测试
     eval_num = 500
     post_label = AsDiscrete(to_onehot=14)
     post_pred = AsDiscrete(argmax=True, to_onehot=14)

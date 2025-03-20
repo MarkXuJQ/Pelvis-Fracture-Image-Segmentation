@@ -27,6 +27,28 @@ pelvis_seg/
 - Python 3.10 (推荐)
 - Windows/Linux/MacOS
 
+
+### 快速安装 | Quick Installation
+
+#### 使用 conda（推荐） | Using conda (recommended)
+
+一键安装所有依赖:
+
+```bash
+# 克隆仓库 | Clone the repository
+git clone https://github.com/your-username/pelvis_seg.git
+cd pelvis_seg
+
+# 创建并激活环境 | Create and activate environment
+conda env create -f environment.yml
+conda activate pelvis_seg
+
+```
+或者
+运行 *install.py* 文件
+
+如果遇到问题，可以采用下面的方式
+
 ### 配置基础环境
 
 #### 方法一：使用 conda（推荐）
@@ -137,3 +159,4 @@ From PENGWIN Task 2 Pelvic Fragment Segmentation Challenge training dataset, con
 如果遇到安装问题，可以：
 1. 查看项目 GitHub Issues
 2. 在 Stack Overflow 上搜索相关问题
+
