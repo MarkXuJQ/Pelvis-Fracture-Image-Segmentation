@@ -123,7 +123,7 @@ class ChatApp(QMainWindow):
         self.settings_menu.exec_(self.settingsButton.mapToGlobal(self.settingsButton.rect().bottomLeft()))
 
     def on_receive_message(self, data):
-        if data.get('sender_id') == self.receiver_id:
+        if int(data.get('sender_id')) == int(self.receiver_id):
             self.chat_area.append(f"{self.receiver_name}: {data['message']}")
 
     def send_message(self):
