@@ -17,7 +17,6 @@ class TaskDetailsWidget(QWidget):
         self.sio.on('task_updated', self.on_task_updated)
         self.saved_description = "(请再次刷新)"
         self.saved_due_date = None
-
         self.fetch_task_details()  # 直接请求任务详情
 
     def init_ui(self):

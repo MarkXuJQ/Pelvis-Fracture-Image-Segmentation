@@ -144,7 +144,6 @@ class ChatApp(QMainWindow):
         self.chat_area = QTextEdit(self)
         self.chat_area.setGeometry(220, 10, 560, 400)
         self.chat_area.setReadOnly(True)
-
         self.message_input = QLineEdit(self)
         self.message_input.setGeometry(220, 420, 460, 40)
 
@@ -240,27 +239,6 @@ class ChatApp(QMainWindow):
                 self.rightLayout.removeItem(item)
         # **强制更新 UI**
         self.rightLayout.update()
-
-    def add_note(self):
-        note_content = self.note_input.text()
-        note_data = {'note_content': note_content, 'patient_id': self.receiver_id}
-        self.sio.emit('add_note', note_data)
-
-    def display_note_page(self):
-        """显示笔记页面"""
-        self.welcomeLabel.setText("笔记管理")
-        self.clear_right_layout()
-        # 创建笔记输入区域
-        self.note_input = QTextEdit(self)
-        self.note_input.setPlaceholderText("在这里输入笔记...")
-
-        # 创建保存按钮
-        save_button = QPushButton("保存笔记", self)
-        save_button.clicked.connect(self.add_note)
-
-        # 添加到布局
-        self.rightLayout.addWidget(self.note_input)
-        self.rightLayout.addWidget(save_button)
 
 
 class TaskCreationWidget:
