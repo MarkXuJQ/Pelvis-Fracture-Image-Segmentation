@@ -3,7 +3,7 @@ from PyQt5.QtGui import QFont, QColor
 from PyQt5.QtCore import Qt, QDateTime, QTimer
 
 
-class TaskDetailsWidget:
+class TaskDetailsWidget(QWidget):
     def __init__(self, parent, item, rightLayout):
         super().__init__()
         self.chat_app = parent
@@ -15,6 +15,8 @@ class TaskDetailsWidget:
         self.init_ui()
         self.sio.on('task_details', self.on_task_details_received)
         self.sio.on('task_updated', self.on_task_updated)
+        self.saved_description = "(请再次刷新)"
+        self.saved_due_date = None
 
         self.fetch_task_details()  # 直接请求任务详情
 

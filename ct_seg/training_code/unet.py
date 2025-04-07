@@ -36,6 +36,8 @@ from monai.data import (
 
 
 import torch
+import torch.nn as nn
+import numpy as np
 
 print_config()
 # 使用指定路径
@@ -43,40 +45,8 @@ root_dir = r"D:\pelvis\ct_seg\data\results\U_net"
 os.makedirs(root_dir, exist_ok=True)  # 确保目录存在
 print(f"模型和结果将保存到: {root_dir}")
 
-# 添加标签重映射部分
-def setup_label_mapping():
-    """创建原始标签值到连续索引的映射"""
-    original_labels = [0, 1, 2, 11, 12, 13, 21, 22, 23]
-    label_to_idx = {label: idx for idx, label in enumerate(original_labels)}
-    idx_to_label = {idx: label for label, idx in label_to_idx.items()}
-    
-    # 打印映射信息
-    print("标签映射关系:")
-    for orig, new in label_to_idx.items():
-        print(f"  原始标签 {orig} -> 新标签 {new}")
-    
-    return label_to_idx, idx_to_label
-
-# 在使用前添加自定义转换类的定义
-class ConvertToMultiChannelBasedOnBratsClassesd(MapTransform):
-    """将原始标签值转换为连续的类别索引"""
-    def __init__(self, keys, label_mapping):
-        super().__init__(keys)
-        self.label_mapping = label_mapping
-    
-    def __call__(self, data):
-        d = dict(data)
-        for key in self.keys:
-            result = torch.zeros_like(d[key])
-            # 遍历原始标签值并替换为映射的索引
-            for orig_label, new_label in self.label_mapping.items():
-                result[d[key] == orig_label] = new_label
-            d[key] = result
-        return d
-
-# 修改模型定义
-label_to_idx, idx_to_label = setup_label_mapping()
-num_classes = len(label_to_idx)  # 应该等于9
+# 更新num_classes为31，与实际标签值范围(0-30)匹配
+num_classes = 31
 
 # 使用一致的空间尺寸变量
 patch_size = (64, 64, 64)  # 改为64³而不是96³
@@ -113,8 +83,6 @@ train_transforms = Compose(
             image_key="image",
             image_threshold=0,
         ),
-        # 保留标签转换
-        ConvertToMultiChannelBasedOnBratsClassesd(keys="label", label_mapping=label_to_idx),
     ]
 )
 val_transforms = Compose(
@@ -129,8 +97,6 @@ val_transforms = Compose(
         ),
         ScaleIntensityRanged(keys=["image"], a_min=-175, a_max=250, b_min=0.0, b_max=1.0, clip=True),
         CropForegroundd(keys=["image", "label"], source_key="image"),
-        # 确保验证数据也使用相同的标签转换
-        ConvertToMultiChannelBasedOnBratsClassesd(keys="label", label_mapping=label_to_idx),
     ]
 )
 data_dir = "D:\\pelvis\\ct_seg\\data"
@@ -226,8 +192,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # 确保模型定义使用相同的尺寸变量
 model = UNETR(
     in_channels=1,
-    out_channels=num_classes,
-    img_size=patch_size,  # 确保这里用的是patch_size=(64,64,64)
+    out_channels=num_classes,  # 修改为31
+    img_size=patch_size,
     feature_size=16,
     hidden_size=384,
     mlp_dim=1536,
@@ -238,11 +204,11 @@ model = UNETR(
     dropout_rate=0.0,
 ).to(device)
 
+# 使用标准损失函数，不进行标签映射
 loss_function = DiceCELoss(
     to_onehot_y=True, 
     softmax=True,
-    include_background=False,  # 不考虑背景类的损失
-    squared_pred=True  # 平方预测值以增加对小概率值的惩罚
+    include_background=False  # 不计算背景类的损失
 )
 torch.backends.cudnn.benchmark = True
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
@@ -251,8 +217,125 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
 roi_size = patch_size  # 确保推理窗口尺寸匹配
 sw_batch_size = 4
 
-def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1000):
-    """执行完整训练循环"""
+# 确保评估函数定义在训练函数之前
+def evaluate_by_region(model, dataloader):
+    """根据正确的标签分配评估各解剖区域的分割性能"""
+    model.eval()
+    
+    # 正确的区域定义
+    regions = {
+        "sacrum": list(range(1, 11)),     # 骶骨区域: 标签1-10
+        "left_hip": list(range(11, 21)),  # 左髋骨区域: 标签11-20
+        "right_hip": list(range(21, 31))  # 右髋骨区域: 标签21-30
+    }
+    
+    # 存储区域指标
+    region_metrics = {region: [] for region in regions}
+    total_dice = 0.0
+    count = 0
+    
+    # 添加调试信息
+    print("\n======== 评估开始 ========")
+    
+    with torch.no_grad():
+        for val_idx, val_data in enumerate(dataloader):
+            val_inputs, val_labels = val_data["image"].to(device), val_data["label"].to(device)
+            
+            # 打印输入和标签的形状以及值范围
+            print(f"样本 {val_idx}:")
+            print(f"  图像形状: {val_inputs.shape}, 范围: [{val_inputs.min().item():.2f}, {val_inputs.max().item():.2f}]")
+            unique_labels = torch.unique(val_labels).cpu().numpy().tolist()
+            print(f"  标签形状: {val_labels.shape}, 包含值: {unique_labels}")
+            
+            # 滑动窗口推理
+            val_outputs = sliding_window_inference(
+                val_inputs, roi_size, sw_batch_size, model, overlap=0.7
+            )
+            
+            # 获取预测类别
+            val_pred = torch.argmax(val_outputs, dim=1)
+            unique_preds = torch.unique(val_pred).cpu().numpy().tolist()
+            print(f"  预测形状: {val_pred.shape}, 包含值: {unique_preds}")
+            
+            # 评估每个解剖区域
+            sample_dice = 0.0
+            sample_region_count = 0
+            
+            for region_name, label_range in regions.items():
+                # 创建该区域的二值掩码
+                region_pred = torch.zeros_like(val_pred, dtype=torch.float32)
+                region_true = torch.zeros_like(val_labels, dtype=torch.float32)
+                
+                # 检查这个区域是否在真实标签中存在
+                region_exists = False
+                
+                # 收集区域内所有标签
+                for label in label_range:
+                    # 加入预测掩码
+                    pred_mask = (val_pred == label)
+                    region_pred[pred_mask] = 1
+                    
+                    # 加入真实标签掩码
+                    true_mask = (val_labels == label)
+                    region_true[true_mask] = 1
+                    
+                    # 检查该标签是否存在
+                    if true_mask.sum() > 0:
+                        region_exists = True
+                
+                # 仅当区域在真实标签中存在时计算Dice
+                if region_exists:
+                    # 计算此区域的Dice分数
+                    intersection = torch.sum(region_pred * region_true).item()
+                    pred_sum = torch.sum(region_pred).item()
+                    true_sum = torch.sum(region_true).item()
+                    
+                    # 调试输出区域统计
+                    print(f"  {region_name}: 交集={intersection}, 预测总和={pred_sum}, 真实总和={true_sum}")
+                    
+                    if pred_sum + true_sum > 0:
+                        dice = 2.0 * intersection / (pred_sum + true_sum)
+                        region_metrics[region_name].append(dice)
+                        sample_dice += dice
+                        sample_region_count += 1
+                        print(f"    Dice = {dice:.4f}")
+                    else:
+                        print(f"    跳过 (预测和真实总和为0)")
+                else:
+                    print(f"  {region_name}: 在此样本中不存在")
+            
+            # 计算此样本的平均Dice
+            if sample_region_count > 0:
+                sample_avg_dice = sample_dice / sample_region_count
+                total_dice += sample_avg_dice
+                count += 1
+                print(f"  样本平均Dice: {sample_avg_dice:.4f}")
+            else:
+                print(f"  样本中没有可评估的区域")
+    
+    # 计算并显示每个区域的平均分数
+    print("\n======== 区域评估结果 ========")
+    
+    region_avgs = {}
+    for region, scores in region_metrics.items():
+        if scores:
+            avg_score = sum(scores) / len(scores)
+            region_avgs[region] = avg_score
+            print(f"{region}区域Dice: {avg_score:.4f} (基于{len(scores)}个样本)")
+        else:
+            region_avgs[region] = 0.0
+            print(f"{region}区域: 无评估数据")
+    
+    # 计算总体平均
+    overall_avg = total_dice / count if count > 0 else 0.0
+    print(f"所有样本平均Dice: {overall_avg:.4f}")
+    print("======== 评估结束 ========\n")
+    
+    return overall_avg, region_avgs
+
+# 训练函数，确保不进行标签映射
+def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=25000):
+    """执行完整训练循环，不做标签映射"""
     model.train()
     epoch_loss = 0
     step = 0
@@ -268,12 +351,13 @@ def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1
         epoch_loss = 0
         step = 0
         
-        # 添加进度条显示，但减少更新频率
+        # 添加进度条显示
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}", unit="批次", 
                            mininterval=10.0)  # 增加最小更新间隔为10秒
         
         for batch_data in progress_bar:
             step += 1
+            # 直接使用原始图像和标签，不进行映射
             x, y = (
                 batch_data["image"].to(device),
                 batch_data["label"].to(device),
@@ -281,6 +365,8 @@ def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1
             
             # 前向传播
             outputs = model(x)
+            
+            # 使用原始标签计算损失，不需要映射
             loss = loss_function(outputs, y)
             
             # 反向传播
@@ -303,13 +389,13 @@ def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1
             if global_step % 200 == 0:  # 增加到每200步记录一次
                 epoch_loss_values.append(epoch_loss / step)
                 
-            # 每1000步评估一次，降低评估频率提高训练速度
+            # 每1000步评估一次
             if global_step % 1000 == 0:
                 # 清理GPU缓存
                 torch.cuda.empty_cache()
                 
-                # 评估当前模型
-                dice_val = evaluate(model, val_loader)
+                # 使用正确的评估函数，不进行标签映射
+                dice_val, region_metrics = evaluate_by_region(model, val_loader)
                 metric_values.append(dice_val)
                 
                 # 简化输出，只记录改进
@@ -319,8 +405,30 @@ def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1
                     torch.save(model.state_dict(), os.path.join(root_dir, "best_metric_model.pth"))
                     print(f"\n新最佳模型! 步骤: {global_step}, Dice: {dice_val:.4f}")
                 
-                # 打印评估信息
-                print(f"\n评估 @ 步骤 {global_step} - Dice: {dice_val:.4f}, 最佳: {dice_val_best:.4f}")
+                # 打印评估信息（显示区域指标）
+                print(f"\n评估 @ 步骤 {global_step}")
+                print(f"总体Dice: {dice_val:.4f}, 最佳: {dice_val_best:.4f}")
+                print("区域指标:")
+                for region, score in region_metrics.items():
+                    print(f"- {region}: {score:.4f}")
+                
+                # 每5000步打印一次当前的学习曲线
+                if global_step % 5000 == 0:
+                    plt.figure("train", (12, 6))
+                    plt.subplot(1, 2, 1)
+                    plt.title("训练平均损失")
+                    x = [(i + 1) * 200 for i in range(len(epoch_loss_values))]
+                    y = epoch_loss_values
+                    plt.xlabel("迭代次数")
+                    plt.plot(x, y)
+                    plt.subplot(1, 2, 2)
+                    plt.title("验证平均Dice")
+                    x = [(i + 1) * 1000 for i in range(len(metric_values))]
+                    y = metric_values
+                    plt.xlabel("迭代次数")
+                    plt.plot(x, y)
+                    plt.savefig(os.path.join(root_dir, f"learning_curve_{global_step}.png"))
+                    plt.close()
                 
                 # 恢复训练模式
                 model.train()
@@ -337,117 +445,19 @@ def train(global_step, train_loader, dice_val_best, global_step_best, max_iter=1
                     os.path.join(root_dir, f"checkpoint_{global_step}.pth"),
                 )
             
+            # 每10个epoch显示一次平均损失
+            if global_step % (10 * len(train_loader)) == 0:
+                print(f"Epoch {epoch} - 平均损失: {epoch_loss / step:.4f}")
+            
             # 达到最大迭代次数则提前结束
             if global_step >= max_iter:
                 break
-        
-        # 每个epoch结束后只打印简短总结
-        if epoch % 5 == 0:  # 每5个epoch打印一次而不是每个都打印
-            print(f"Epoch {epoch} - 平均损失: {epoch_loss / step:.4f}")
+                
+        # 每个epoch结束时清理GPU缓存
+        torch.cuda.empty_cache()
     
-    # 返回训练结果
+    print(f"训练完成! 共执行{global_step}步，最佳Dice: {dice_val_best:.4f} @ 步骤 {global_step_best}")
     return global_step, dice_val_best, global_step_best
-
-def evaluate(model, dataloader):
-    model.eval()
-    dice_metric = DiceMetric(include_background=False, reduction="mean")
-    
-    # 修改这里，为输出和标签使用不同的转换器
-    post_pred = AsDiscrete(argmax=True, to_onehot=num_classes)
-    post_label = AsDiscrete(to_onehot=num_classes)
-    
-    with torch.no_grad():
-        for val_data in dataloader:
-            val_inputs, val_labels = val_data["image"].to(device), val_data["label"].to(device)
-            
-            # 这里也要使用相同的尺寸
-            roi_size = patch_size  # 使用全局变量patch_size=(64,64,64)
-            sw_batch_size = 4
-            outputs = sliding_window_inference(val_inputs, roi_size, sw_batch_size, model)
-            
-            # 打印形状信息以便调试
-            print(f"输出形状: {outputs.shape}, 标签形状: {val_labels.shape}")
-            
-            # 检查标签形状，如果已经是多通道，则调整处理方式
-            if val_labels.shape[1] > 1:  # 多通道标签
-                print("检测到多通道标签，调整处理方式")
-                # 对于多通道标签，我们假设它们已经是独热编码
-                outputs = [post_pred(i) for i in decollate_batch(outputs)]
-                labels = decollate_batch(val_labels)  # 不对标签做额外处理
-            else:  # 单通道标签
-                print("检测到单通道标签")
-                outputs = [post_pred(i) for i in decollate_batch(outputs)]
-                labels = [post_label(i) for i in decollate_batch(val_labels)]
-            
-            # 计算Dice指标
-            try:
-                dice_metric(y_pred=outputs, y=labels)
-            except Exception as e:
-                print(f"计算Dice时出错: {e}")
-                print(f"输出类型: {type(outputs)}, 形状: {[o.shape for o in outputs]}")
-                print(f"标签类型: {type(labels)}, 形状: {[l.shape for l in labels]}")
-                return 0.0  # 如果出错，返回0作为Dice值
-        
-        # 获取指标结果
-        metric_result = dice_metric.aggregate()
-        dice_metric.reset()
-        
-        # 正确处理不同类型的返回值
-        if isinstance(metric_result, (list, tuple)):
-            # 多类别结果 - 将元组/列表转换为平均值
-            metric_values = [m.item() if isinstance(m, torch.Tensor) else float(m) for m in metric_result]
-            metric_str = ", ".join([f"{m:.4f}" for m in metric_values])
-            print(f"各类别Dice得分: {metric_str}")
-            # 计算平均值作为总体指标
-            metric = sum(metric_values) / len(metric_values) if metric_values else 0.0
-            print(f"平均Dice得分: {metric:.4f}")
-        elif isinstance(metric_result, torch.Tensor):
-            # 单类别或已经平均的结果
-            if metric_result.numel() > 1:  # 多元素张量
-                metric_values = metric_result.detach().cpu().numpy()
-                metric_str = ", ".join([f"{float(m):.4f}" for m in metric_values])
-                print(f"各类别Dice得分: {metric_str}")
-                metric = float(metric_result.mean().item())
-                print(f"平均Dice得分: {metric:.4f}")
-            else:  # 单元素张量
-                metric = float(metric_result.item())
-                print(f"Dice得分: {metric:.4f}")
-        else:
-            # 其他情况，尝试转换为浮点数
-            try:
-                metric = float(metric_result)
-                print(f"Dice得分: {metric:.4f}")
-            except (TypeError, ValueError):
-                print(f"无法处理的Dice得分类型: {type(metric_result)}")
-                metric = 0.0
-    
-    return metric  # 返回单个平均值
-
-# 注释掉监视器输出相关代码
-"""
-# 监视器线程函数
-def monitor_thread():
-    import time
-    import sys
-    import threading
-    import traceback
-    
-    print("监视器线程已启动，将监控程序进展...")
-    
-    while True:
-        time.sleep(30)  # 每30秒检查一次
-        print("\n[监视器] 已等待 30.0 秒无明显进展")
-        
-        print("\n[监视器] 当前所有线程堆栈信息:")
-        for th in threading.enumerate():
-            print(f"\n线程 {th.name}:")
-            if th.ident:  # 确保线程ID存在
-                traceback.print_stack(sys._current_frames()[th.ident])
-
-# 启动监视器线程
-monitor_thread_instance = threading.Thread(target=monitor_thread, daemon=True, name="monitor_thread")
-monitor_thread_instance.start()
-"""
 
 # 显示训练设备信息，保留这部分有用信息
 print("\n\n==================================================")
@@ -657,3 +667,75 @@ if __name__ == '__main__':
     else:
         print("基础功能测试失败，跳过完整训练...")
         print("建议检查数据和模型兼容性问题")
+
+def visualize_prediction(model, val_data, index=0):
+    """可视化模型预测结果，使用原始标签值（0-30）"""
+    model.eval()
+    
+    # 生成颜色映射, 0为背景(黑色), 其他按区域分组
+    colors = plt.cm.get_cmap('tab20', 30)  # 使用tab20色图获取20种颜色
+    
+    with torch.no_grad():
+        # 获取单个样本
+        val_inputs = val_data["image"].to(device)
+        val_labels = val_data["label"].to(device)
+        
+        # 滑动窗口推理
+        val_outputs = sliding_window_inference(
+            val_inputs, roi_size, sw_batch_size, model, overlap=0.7
+        )
+        
+        # 获取预测类别
+        val_pred = torch.argmax(val_outputs, dim=1).cpu().numpy()
+        
+        # 准备显示数据
+        image = val_inputs[0, 0].cpu().numpy()
+        label = val_labels[0, 0].cpu().numpy()
+        pred = val_pred[0]
+        
+        # 获取中心切片
+        z_idx = image.shape[2] // 2
+        
+        # 显示结果
+        plt.figure("预测结果", (18, 6))
+        
+        # 显示原始图像
+        plt.subplot(1, 3, 1)
+        plt.title("原始图像")
+        plt.imshow(image[:, :, z_idx], cmap="gray")
+        plt.colorbar(shrink=0.8)
+        
+        # 显示真实标签，使用自定义颜色映射
+        plt.subplot(1, 3, 2)
+        plt.title("真实标签")
+        masked_label = np.ma.masked_where(label[:, :, z_idx] == 0, label[:, :, z_idx])
+        plt.imshow(image[:, :, z_idx], cmap="gray")
+        # 使用不同颜色显示不同区域
+        sacrum_mask = np.ma.masked_where((label[:, :, z_idx] < 1) | (label[:, :, z_idx] > 10), label[:, :, z_idx])
+        left_hip_mask = np.ma.masked_where((label[:, :, z_idx] < 11) | (label[:, :, z_idx] > 20), label[:, :, z_idx])
+        right_hip_mask = np.ma.masked_where((label[:, :, z_idx] < 21) | (label[:, :, z_idx] > 30), label[:, :, z_idx])
+        
+        plt.imshow(sacrum_mask, cmap='Reds', alpha=0.7)
+        plt.imshow(left_hip_mask, cmap='Greens', alpha=0.7)
+        plt.imshow(right_hip_mask, cmap='Blues', alpha=0.7)
+        plt.colorbar(shrink=0.8)
+        
+        # 显示预测结果
+        plt.subplot(1, 3, 3)
+        plt.title("模型预测")
+        masked_pred = np.ma.masked_where(pred[:, :, z_idx] == 0, pred[:, :, z_idx])
+        plt.imshow(image[:, :, z_idx], cmap="gray")
+        
+        # 使用不同颜色显示不同预测区域
+        sacrum_pred = np.ma.masked_where((pred[:, :, z_idx] < 1) | (pred[:, :, z_idx] > 10), pred[:, :, z_idx])
+        left_hip_pred = np.ma.masked_where((pred[:, :, z_idx] < 11) | (pred[:, :, z_idx] > 20), pred[:, :, z_idx])
+        right_hip_pred = np.ma.masked_where((pred[:, :, z_idx] < 21) | (pred[:, :, z_idx] > 30), pred[:, :, z_idx])
+        
+        plt.imshow(sacrum_pred, cmap='Reds', alpha=0.7)
+        plt.imshow(left_hip_pred, cmap='Greens', alpha=0.7)
+        plt.imshow(right_hip_pred, cmap='Blues', alpha=0.7)
+        plt.colorbar(shrink=0.8)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(root_dir, f"prediction_vis_{index}.png"), dpi=300)
+        plt.show()

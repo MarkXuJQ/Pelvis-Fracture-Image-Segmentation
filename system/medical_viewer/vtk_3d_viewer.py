@@ -95,9 +95,10 @@ class VTK3DViewer(QWidget):
         
         # 创建分割结果的颜色映射 - 使用更鲜明的颜色
         self.segmentation_color = vtk.vtkColorTransferFunction()
-        self.segmentation_color.AddRGBPoint(0.0, 0.0, 0.0, 0.0)     # 背景透明
-        self.segmentation_color.AddRGBPoint(0.5, 0.0, 0.8, 1.0)     # 中间值为蓝紫色
-        self.segmentation_color.AddRGBPoint(1.0, 1.0, 0.2, 0.0)     # 高值为亮橙红色
+        self.segmentation_color.AddRGBPoint(0, 0.0, 0.0, 0.0)   # 背景
+        self.segmentation_color.AddRGBPoint(5, 1.0, 0.0, 0.0)   # 骶骨区域中值
+        self.segmentation_color.AddRGBPoint(15, 0.0, 1.0, 0.0)  # 左髋骨区域中值
+        self.segmentation_color.AddRGBPoint(25, 0.0, 0.0, 1.0)  # 右髋骨区域中值
         
         # 创建分割结果的不透明度映射 - 增加对比度
         self.segmentation_opacity = vtk.vtkPiecewiseFunction()
@@ -131,6 +132,27 @@ class VTK3DViewer(QWidget):
         if mask is not None:
             self.mask_data = mask.astype(np.float32)
             self.vtk_mask = self._numpy_to_vtk_image(self.mask_data)
+            
+            # 设置分割掩码的颜色映射
+            # 骶骨：红色
+            sacrum_mask = (mask >= 1) & (mask <= 10)
+            # 左髋骨：绿色
+            left_hip_mask = (mask >= 11) & (mask <= 20)
+            # 右髋骨：蓝色
+            right_hip_mask = (mask >= 21) & (mask <= 30)
+            
+            # 创建彩色掩码
+            colored_mask = np.zeros((*mask.shape, 4), dtype=np.uint8)
+            colored_mask[sacrum_mask] = [255, 0, 0, 180]    # 红色，半透明
+            colored_mask[left_hip_mask] = [0, 255, 0, 180]  # 绿色，半透明
+            colored_mask[right_hip_mask] = [0, 0, 255, 180] # 蓝色，半透明
+            
+            # 更新VTK中的颜色映射函数
+            self.segmentation_color = vtk.vtkColorTransferFunction()
+            self.segmentation_color.AddRGBPoint(0, 0.0, 0.0, 0.0)   # 背景
+            self.segmentation_color.AddRGBPoint(5, 1.0, 0.0, 0.0)   # 骶骨区域中值
+            self.segmentation_color.AddRGBPoint(15, 0.0, 1.0, 0.0)  # 左髋骨区域中值
+            self.segmentation_color.AddRGBPoint(25, 0.0, 0.0, 1.0)  # 右髋骨区域中值
         else:
             self.mask_data = None
             self.vtk_mask = None

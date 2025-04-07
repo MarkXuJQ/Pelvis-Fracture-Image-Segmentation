@@ -641,20 +641,12 @@ class CTViewer(QWidget):
         """返回到主窗口"""
         # 在这里动态导入，避免循环导入
         try:
-            from image_viewer_window import MedicalImageViewer
+            from system.image_viewer_window import MedicalImageViewer
             if hasattr(self, 'medical_image_viewer'):
                 return self.medical_image_viewer
             else:
                 self.medical_image_viewer = MedicalImageViewer(self.patient_id)
                 return self.medical_image_viewer
-        except ImportError:
-            try:
-                from system.image_viewer_window import MedicalImageViewer
-                if hasattr(self, 'medical_image_viewer'):
-                    return self.medical_image_viewer
-                else:
-                    self.medical_image_viewer = MedicalImageViewer(self.patient_id)
-                    return self.medical_image_viewer
-            except ImportError:
-                QMessageBox.warning(self, "警告", "无法返回主窗口，找不到相关模块")
-                return None
+        except ImportError as e:
+            QMessageBox.warning(self, "警告", f"无法返回主窗口，找不到相关模块: {str(e)}")
+            return None

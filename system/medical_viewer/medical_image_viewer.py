@@ -5,7 +5,7 @@ import matplotlib
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QLabel, 
                              QPushButton, QVBoxLayout, QHBoxLayout, QWidget, 
                              QComboBox, QSlider, QMessageBox, QGroupBox,
-                             QRadioButton, QButtonGroup, QToolBar, QCheckBox, QDialog)
+                             QRadioButton, QButtonGroup, QToolBar, QCheckBox, QDialog, QProgressDialog, QFrame)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImage, QCursor, QPen, QBrush, QColor, QPainter
 import matplotlib.pyplot as plt
@@ -372,6 +372,47 @@ class InteractiveCanvas(FigureCanvas):
             'white': [255, 255, 255]
         }
         return color_map.get(color_name, [255, 0, 0])  # 默认返回红色
+
+    def add_box(self, box_coords):
+        """添加分割框并更新显示"""
+        if not hasattr(self, 'boxes'):
+            self.boxes = []
+            self.box_colors = []
+            self.box_regions = []
+            
+        # 确定区域类型和颜色
+        x_center = (box_coords[0] + box_coords[2]) / 2
+        width = self.processor.image_data.shape[2]  # 图像宽度
+        
+        # 根据框的位置确定区域
+        if x_center < width / 3:
+            region = "left_hip"
+            # 左髋骨：绿色 - 与掩码颜色一致
+            color = 'g'  # 绿色
+        elif x_center > 2 * width / 3:
+            region = "right_hip"
+            # 右髋骨：蓝色 - 与掩码颜色一致
+            color = 'b'  # 蓝色
+        else:
+            region = "sacrum"
+            # 骶骨：红色 - 与掩码颜色一致
+            color = 'r'  # 红色
+        
+        self.boxes.append(box_coords)
+        self.box_colors.append(color)
+        self.box_regions.append(region)
+        
+        # 绘制框
+        rect = mpatches.Rectangle(
+            (box_coords[0], box_coords[1]),
+            box_coords[2] - box_coords[0],
+            box_coords[3] - box_coords[1],
+            linewidth=2,
+            edgecolor=color,
+            facecolor='none'
+        )
+        self.axes.add_patch(rect)
+        self.draw_idle()
 
 
 class MedicalImageApp(QMainWindow):
@@ -794,7 +835,7 @@ class MedicalImageApp(QMainWindow):
             self.update_display()
             
     def update_display(self):
-        """更新显示"""
+        """更新图像显示"""
         if not hasattr(self, 'processor') or self.processor.image_data is None:
             return
             
@@ -816,141 +857,197 @@ class MedicalImageApp(QMainWindow):
         
         # 更新点和框
         self.original_view.set_circles(self.points, self.point_labels)
-        for i, box in enumerate(self.boxes):
-            color_idx = i % len(self.original_view.box_colors)
-            self.original_view.draw_saved_box(box, color_idx)
+        self.draw_boxes()
         
         # 显示分割结果
-        if self.mask is not None:
-            self.display_result(img)
-    
+        self.display_result(img)
+        
+        # 如果有彩色分割，显示图例按钮
+        if hasattr(self, 'region_colors') and self.region_colors:
+            if not hasattr(self, 'legend_btn'):
+                self.legend_btn = QPushButton("显示颜色图例", self)
+                self.legend_btn.clicked.connect(self.show_color_legend)
+                # 检查是否有toolbar属性
+                if hasattr(self, 'toolbar'):
+                    self.toolbar.addWidget(self.legend_btn)
+                else:
+                    # 将按钮添加到合适的位置，例如工具区域
+                    if hasattr(self, 'tool_area'):
+                        self.tool_area.layout().addWidget(self.legend_btn)
+                    else:
+                        # 创建一个框架来容纳按钮
+                        if not hasattr(self, 'legend_frame'):
+                            self.legend_frame = QFrame(self)
+                            legend_layout = QHBoxLayout(self.legend_frame)
+                            legend_layout.setContentsMargins(0, 0, 0, 0)
+                            self.legend_frame.setLayout(legend_layout)
+                            # 添加到主布局的底部
+                            if hasattr(self, 'main_layout'):
+                                self.main_layout.addWidget(self.legend_frame)
+                            else:
+                                # 最后尝试添加到中央窗口部件的布局
+                                if hasattr(self, 'centralWidget'):
+                                    self.centralWidget().layout().addWidget(self.legend_frame)
+                        
+                        # 添加按钮到图例框架
+                        if hasattr(self, 'legend_frame'):
+                            self.legend_frame.layout().addWidget(self.legend_btn)
+        
+            # 确保按钮可见
+            if hasattr(self, 'legend_btn'):
+                self.legend_btn.setVisible(True)
+        elif hasattr(self, 'legend_btn'):
+            self.legend_btn.setVisible(False)
+
     def display_result(self, current_slice):
         """显示分割结果"""
-        if self.mask is None:
+        if not hasattr(self, 'box_masks') or not self.box_masks or not self.result_ax:
             return
-            
-        # 确定掩码是2D还是3D
-        mask_is_3d = len(self.mask.shape) == 3
-        
-        # 获取当前视图对应的掩码切片
-        if mask_is_3d:
-            if self.current_view == 'axial':
-                mask_slice = self.mask[self.axial_slice]
-            elif self.current_view == 'coronal':
-                mask_slice = self.mask[:, self.coronal_slice, :]
-                mask_slice = np.rot90(mask_slice, k=2)
-            elif self.current_view == 'sagittal':
-                mask_slice = self.mask[:, :, self.sagittal_slice]
-                mask_slice = np.rot90(mask_slice, k=2)
-        else:
-            # 如果是2D掩码，直接使用
-            mask_slice = self.mask
-        
-        # 清除之前的结果
+
+        # 清除之前的显示
         self.result_ax.clear()
         
-        # 获取当前选择的模型
-        selected_text = self.model_selector.currentText()
-        selected_model = selected_text.split(':')[0]
-        
-        # 显示结果
-        if selected_model == 'deeplabv3':
-            # DeepLabV3 特殊处理 - 使用彩色分割方案
-            # 先显示原始图像
-            self.result_ax.imshow(current_slice, cmap='gray')
+        if len(self.box_masks) == 1:
+            # 单个掩码的情况
+            mask = self.box_masks[0]
             
-            # 创建彩色掩码显示
-            cmap = plt.cm.get_cmap('tab20', 24)  # 24类，使用tab20彩色映射
+            # 创建RGB叠加图像
+            # 确保current_slice在[0,1]范围内
+            if current_slice.max() > 1.0:
+                current_slice_norm = current_slice / 255.0
+            else:
+                current_slice_norm = current_slice.copy()
             
-            # 生成彩色掩码
-            colored_mask = np.zeros((*mask_slice.shape, 4))
-            unique_values = np.unique(mask_slice)
-            print(f"掩码中的唯一值: {unique_values}")
+            # 创建RGB叠加图像
+            overlay = np.stack([current_slice_norm] * 3, axis=2)
             
-            for i, val in enumerate(unique_values):
-                if val > 0:  # 跳过背景
-                    # 获取该类别的颜色
-                    color = cmap(int(val % 24))
-                    # 将该值对应的像素设置为对应颜色
-                    mask_color = np.zeros((*mask_slice.shape, 4))
-                    mask_color[mask_slice == val] = color
-                    mask_color[mask_slice == val, 3] = 0.7  # 设置Alpha通道
+            # 检查是否有彩色掩码
+            if hasattr(self, 'colored_mask') and self.colored_mask is not None:
+                # 获取当前视图的彩色切片
+                if self.current_view == 'axial':
+                    colored_slice = self.colored_mask[self.axial_slice]
+                elif self.current_view == 'coronal':
+                    colored_slice = self.colored_mask[:, self.coronal_slice, :]
+                    colored_slice = np.rot90(colored_slice, k=2)
+                elif self.current_view == 'sagittal':
+                    colored_slice = self.colored_mask[:, :, self.sagittal_slice]
+                    colored_slice = np.rot90(colored_slice, k=2)
+                
+                # 使用彩色切片覆盖在原始图像上
+                # 确保彩色切片和overlay尺寸一致
+                if colored_slice.shape[:2] == overlay.shape[:2]:
+                    # 只在非透明区域应用颜色
+                    mask_visible = colored_slice[:,:,3] > 0
                     
-                    # 显示该类别的掩码
-                    self.result_ax.imshow(mask_color)
+                    # 应用alpha混合
+                    alpha = 0.6  # 透明度系数
+                    for i in range(3):  # RGB通道
+                        if np.any(mask_visible):
+                            temp = overlay[:,:,i].copy()
+                            temp[mask_visible] = (1-alpha) * temp[mask_visible] + alpha * colored_slice[:,:,i][mask_visible]
+                            overlay[:,:,i] = temp
+                else:
+                    print(f"尺寸不匹配: colored_slice={colored_slice.shape}, overlay={overlay.shape}")
+            else:
+                # 兼容MedSAM和UNet模型
+                # 检查当前模型类型
+                model_id = "unknown"
+                if hasattr(self, 'model_selector'):
+                    model_id = self.model_selector.currentText()
+                
+                if model_id.startswith('medsam'):
+                    # MedSAM模型 - 使用原始处理方式
+                    if np.max(mask) > 0:  # 确保mask中有分割区域
+                        # 显示分割结果(叠加)
+                        masked_img = current_slice_norm.copy()
+                        
+                        # 创建彩色覆盖
+                        colored_mask = np.zeros_like(overlay)
+                        colored_mask[mask > 0] = [1, 0, 0]  # 红色掩码
+                        
+                        # 创建叠加效果
+                        alpha = 0.3
+                        overlay = (1-alpha) * overlay + alpha * colored_mask
+                else:
+                    # UNet3D模型 - 使用区域颜色映射
+                    sacrum_mask = (mask >= 1) & (mask <= 10)
+                    left_hip_mask = (mask >= 11) & (mask <= 20)
+                    right_hip_mask = (mask >= 21) & (mask <= 30)
                     
-                    # 绘制该类别的轮廓
-                    self.result_ax.contour(mask_slice == val, colors=[color[:3]], linewidths=1.0)
+                    # 为每个区域应用不同颜色
+                    alpha = 0.6  # 透明度系数
+                    
+                    if np.any(sacrum_mask):
+                        # 红色 - 骶骨
+                        overlay[sacrum_mask, 0] = (1-alpha) * overlay[sacrum_mask, 0] + alpha * 1.0
+                        overlay[sacrum_mask, 1] = (1-alpha) * overlay[sacrum_mask, 1]
+                        overlay[sacrum_mask, 2] = (1-alpha) * overlay[sacrum_mask, 2]
+                        
+                    if np.any(left_hip_mask):
+                        # 绿色 - 左髋骨
+                        overlay[left_hip_mask, 0] = (1-alpha) * overlay[left_hip_mask, 0]
+                        overlay[left_hip_mask, 1] = (1-alpha) * overlay[left_hip_mask, 1] + alpha * 1.0
+                        overlay[left_hip_mask, 2] = (1-alpha) * overlay[left_hip_mask, 2]
+                        
+                    if np.any(right_hip_mask):
+                        # 蓝色 - 右髋骨
+                        overlay[right_hip_mask, 0] = (1-alpha) * overlay[right_hip_mask, 0]
+                        overlay[right_hip_mask, 1] = (1-alpha) * overlay[right_hip_mask, 1]
+                        overlay[right_hip_mask, 2] = (1-alpha) * overlay[right_hip_mask, 2] + alpha * 1.0
+            
+            # 显示结果
+            self.result_ax.imshow(overlay)
+            
+            # 如果需要显示图例 - 使用result_ax而不是fig
+            import matplotlib.patches as mpatches
+            
+            # 创建图例
+            model_id = "unknown"
+            if hasattr(self, 'model_selector'):
+                model_id = self.model_selector.currentText()
+            
+            if model_id.startswith('medsam'):
+                # MedSAM模型只有一种颜色
+                red_patch = mpatches.Patch(color='red', label='分割区域')
+                self.result_ax.legend(handles=[red_patch], 
+                              loc='lower center', bbox_to_anchor=(0.5, -0.15))
+            else:
+                # UNet模型有三种颜色
+                red_patch = mpatches.Patch(color='red', label='骶骨')
+                green_patch = mpatches.Patch(color='green', label='左髋骨')
+                blue_patch = mpatches.Patch(color='blue', label='右髋骨')
+                
+                self.result_ax.legend(handles=[red_patch, green_patch, blue_patch], 
+                              loc='lower center', bbox_to_anchor=(0.5, -0.15))
         
         elif len(self.box_masks) > 1:
-            # 多个框，使用彩色掩码
-            print(f"使用彩色掩码: {len(self.box_masks)}个")
+            # 多掩码的情况 - 创建彩色叠加
+            composite_mask = np.zeros_like(current_slice)
             
-            # 先显示原始图像
-            self.result_ax.imshow(current_slice, cmap='gray')
-            
-            # 然后叠加每个掩码
+            # 设置不同的灰度值表示不同框的分割
             for i, mask in enumerate(self.box_masks):
-                if i >= len(self.original_view.box_colors):
-                    break
-                
-                # 确定当前掩码的切片
-                if mask_is_3d:
-                    if self.current_view == 'axial':
-                        mask_i_slice = mask[self.axial_slice]
-                    elif self.current_view == 'coronal':
-                        mask_i_slice = mask[:, self.coronal_slice, :]
-                        mask_i_slice = np.rot90(mask_i_slice, k=2)
-                    elif self.current_view == 'sagittal':
-                        mask_i_slice = mask[:, :, self.sagittal_slice]
-                        mask_i_slice = np.rot90(mask_i_slice, k=2)
-                else:
-                    mask_i_slice = mask
-                
-                # 创建彩色掩码
-                if i < len(self.box_colors):
-                    # 直接使用已保存的框颜色
-                    color_name = self.box_colors[i]
-                    # 如果保存的是颜色名称字符串而非RGB值
-                    if isinstance(color_name, str):
-                        color_rgb = self.original_view.name_to_rgb(color_name)
-                    else:
-                        # 如果已经是RGB元组
-                        color_rgb = color_name
-                else:
-                    # 如果没有对应的框颜色，使用默认颜色序列
-                    color_name = self.original_view.box_colors[i % len(self.original_view.box_colors)]
-                    color_rgb = self.original_view.name_to_rgb(color_name)
-                
-                # 创建彩色掩码数组
-                h, w = mask_i_slice.shape
-                colored_mask = np.zeros((h, w, 4))
-                colored_mask[mask_i_slice > 0, 0] = color_rgb[0] / 255.0
-                colored_mask[mask_i_slice > 0, 1] = color_rgb[1] / 255.0
-                colored_mask[mask_i_slice > 0, 2] = color_rgb[2] / 255.0
-                colored_mask[mask_i_slice > 0, 3] = 0.5  # 半透明
-                
-                # 显示彩色掩码
-                self.result_ax.imshow(colored_mask)
-        else:
-            # 单个掩码，使用改进的显示方式
-            # 先显示原始图像
-            self.result_ax.imshow(current_slice, cmap='gray')
+                mask_val = (i + 1) * 50  # 使用递增的灰度值
+                if mask_val > 255:
+                    mask_val = 255
+                composite_mask[mask > 0] = mask_val
             
-            # 创建带透明度的红色掩码
-            if np.any(mask_slice):
-                h, w = mask_slice.shape
-                red_mask = np.zeros((h, w, 4))
-                red_mask[mask_slice > 0, 0] = 1.0  # 红色通道
-                red_mask[mask_slice > 0, 3] = 0.5  # Alpha通道，半透明
+            # 显示分割结果
+            current_slice_rgb = np.stack([current_slice] * 3, axis=2)
+            if current_slice_rgb.max() > 1.0:
+                current_slice_rgb = current_slice_rgb / 255.0
                 
-                # 显示填充的红色掩码
-                self.result_ax.imshow(red_mask)
-                
-                # 同时也显示轮廓，增强可视性
-                self.result_ax.contour(mask_slice > 0, colors=['red'], linewidths=1.5)
+            cmap = plt.cm.get_cmap('jet')  # 使用彩色映射
+            
+            # 应用颜色映射到掩码
+            colors = cmap(composite_mask.astype(float) / np.max(composite_mask) if np.max(composite_mask) > 0 else 0)
+            colors[..., 3] = (composite_mask > 0) * 0.5  # 设置alpha通道
+            
+            # 显示原始图像
+            self.result_ax.imshow(current_slice, cmap='gray')
+            # 叠加彩色掩码
+            self.result_ax.imshow(colors, alpha=0.5)
         
-        self.result_ax.axis('off')
+        # 刷新视图
         self.result_canvas.draw()
 
     def open_image_from_db(self):
@@ -1500,6 +1597,12 @@ class MedicalImageApp(QMainWindow):
                         # 保存体积掩码
                         self.mask = volume_mask
                         
+                        # 获取彩色分割结果
+                        if hasattr(self.processor.segmenter, 'get_colored_segmentation'):
+                            self.colored_mask = self.processor.segmenter.get_colored_segmentation(volume_mask)
+                            self.region_colors = self.processor.segmenter.get_color_legend()
+                            print("已生成彩色分割结果")
+                        
                         # 创建当前视图的切片掩码
                         if self.current_view == 'axial':
                             mask_slice = self.mask[self.axial_slice]
@@ -1609,6 +1712,125 @@ class MedicalImageApp(QMainWindow):
         elif model_name in ['unet3d', '3dunet', 'vnet', 'medsam']:
             return True  # 这些模型支持 3D 分割
         return False  # 默认不支持
+
+    def show_color_legend(self):
+        """显示分割区域颜色图例"""
+        if not hasattr(self, 'region_colors') or not self.region_colors:
+            return
+        
+        # 创建图例对话框
+        legend_dialog = QDialog(self)
+        legend_dialog.setWindowTitle("分割区域颜色图例")
+        legend_dialog.setMinimumWidth(300)
+        
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("<b>解剖区域颜色对应关系：</b>"))
+        
+        # 为每个区域创建颜色样本和标签
+        for region_name, color in self.region_colors.items():
+            item_layout = QHBoxLayout()
+            
+            # 创建颜色样本
+            color_sample = QLabel()
+            color_sample.setFixedSize(20, 20)
+            color_sample.setStyleSheet(f"background-color: rgb({color[0]}, {color[1]}, {color[2]})")
+            
+            # 创建区域标签
+            region_label = QLabel(region_name)
+            
+            item_layout.addWidget(color_sample)
+            item_layout.addWidget(region_label)
+            item_layout.addStretch()
+            
+            layout.addLayout(item_layout)
+        
+        layout.addStretch()
+        
+        # 添加关闭按钮
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(legend_dialog.accept)
+        layout.addWidget(close_btn)
+        
+        legend_dialog.setLayout(layout)
+        legend_dialog.exec_()
+
+    def draw_boxes(self):
+        """绘制所有分割框"""
+        if hasattr(self, 'boxes') and self.boxes:
+            for i, box in enumerate(self.boxes):
+                # 使用保存的颜色或默认颜色
+                color = self.box_colors[i] if hasattr(self, 'box_colors') and i < len(self.box_colors) else 'r'
+                
+                rect = mpatches.Rectangle(
+                    (box[0], box[1]),
+                    box[2] - box[0],
+                    box[3] - box[1],
+                    linewidth=2,
+                    edgecolor=color,
+                    facecolor='none'
+                )
+                self.original_view.axes.add_patch(rect)
+
+    def run_medsam_segmentation(self):
+        """执行MedSAM分割"""
+        if not hasattr(self, 'boxes') or not self.boxes:
+            QMessageBox.warning(self, "提示", "请先添加分割框")
+            return
+        
+        # 创建进度对话框
+        progress_dialog = QProgressDialog("正在进行分割...", "取消", 0, 100, self)
+        progress_dialog.setWindowTitle("分割进度")
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.show()
+        
+        try:
+            # 初始化分割器
+            if not hasattr(self, 'medsam_segmenter') or self.medsam_segmenter is None:
+                from system.medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
+                self.medsam_segmenter = MedSAMSegmenter()
+            
+            # 准备提示
+            prompts = []
+            for i, box in enumerate(self.boxes):
+                # 确保添加区域信息
+                region = self.box_regions[i] if hasattr(self, 'box_regions') and i < len(self.box_regions) else "unknown"
+                prompts.append({
+                    'box': box,
+                    'region': region  # 传递区域信息
+                })
+            
+            # 执行分割
+            volume_mask = self.medsam_segmenter.segment_3d_image(self.processor.image_data, prompts)
+            
+            # 处理分割结果
+            if volume_mask is not None:
+                print(f"MedSAM分割完成，掩码形状: {volume_mask.shape}")
+                
+                # 保存体积掩码
+                self.mask = volume_mask
+                
+                # 对MedSAM结果也应用彩色处理
+                if hasattr(self.medsam_segmenter, 'get_colored_segmentation'):
+                    self.colored_mask = self.medsam_segmenter.get_colored_segmentation(volume_mask)
+                    self.region_colors = self.medsam_segmenter.get_color_legend()
+                
+                # 更新显示
+                self.update_display()
+                
+                # 启用3D查看
+                self.view_3d_btn.setEnabled(True)
+                
+                QMessageBox.information(self, "成功", "MedSAM分割完成")
+            else:
+                QMessageBox.warning(self, "警告", "MedSAM分割失败")
+        
+        except Exception as e:
+            print(f"MedSAM分割出错: {str(e)}")
+            traceback.print_exc()
+            QMessageBox.critical(self, "错误", f"MedSAM分割出错: {str(e)}")
+        
+        finally:
+            progress_dialog.setValue(100)
 
 
 if __name__ == "__main__":

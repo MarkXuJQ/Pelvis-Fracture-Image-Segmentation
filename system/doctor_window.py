@@ -4,7 +4,7 @@ import pandas as pd
 from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 
-from medical_viewer.image_viewer_window import MedicalImageViewer
+from medical_viewer.medical_image_viewer import MedicalImageApp
 from delegate import TaskItemDelegate
 from fracture_edit import FractureHistoryDialog
 from stylesheet import apply_stylesheet
@@ -20,7 +20,6 @@ from sqlalchemy.orm import sessionmaker
 from chat_window import ChatApp
 from settings_dialog import SettingsDialog
 from database.db_config import db_config
-from medical_viewer.medical_image_viewer import MedicalImageApp
 
 # 创建数据库连接
 engine = create_engine(

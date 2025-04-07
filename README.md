@@ -8,128 +8,91 @@
 
 ```
 pelvis_seg/
-├── system/ # 系统模块
-│   ├── main.py # 主程序
-│   ├── main_window.py # 主窗口
-│   ├── ct_viewer.py # CT图像处理
-│   ├── xray_viewer.py # X光图像处理
-│   ├── patient_manager.py # 患者管理
-│   ├── ui # 项目对应ui
-├── ct_seg/ # CT图像分割
-│   ├── ...
-├── xray_seg/ # X光图像分割
-│   ├── ...
+├── ct_seg/                 # CT分割模块
+│   ├── data/               # CT数据目录
+│   ├── tools/              # CT相关工具
+│   └── training_code/      # 训练代码
+│
+├── xray_seg/               # X光分割模块
+│   ├── data/               # X光数据目录
+│   ├── training_code/          # Jupyter notebooks
+│   └── src/                # 源代码
+│       └── utils/          # 工具函数
+│
+├── system/                 # 系统核心模块
+│   ├── config/             # 云主机配置文件
+│   ├── database/           # 数据库相关
+│   ├── medical_viewer/     # 医学图像查看器
+│   │   └── segmenters/     # 分割器
+│   │
+│   ├── models/             # 模型定义
+│   ├── ui/                 # 用户界面
+│   └── utils/              # 通用工具
+│
+├── weights/                # 模型权重
+│   ├── DeeplabV3/
+│   ├── hub/
+│   │   └── checkpoints/
+│   ├── MedSAM/
+│   └── U-net/
+│
+├── image/                  # 项目图片资源
+│   └── plan/
+│
+├── requirements.txt        # pip依赖
+├── environment.yml         # conda环境配置
+├── README.md               # 项目说明
+└── .gitignore             # Git忽略文件
 ```
 
-## Medical Image Viewer Installation Guide
+## Installation Guide | 安装指南
 
-### 环境要求
-- Python 3.10 (推荐)
+### Prerequisites | 环境要求
+- Python 3.10 (Required | 必需)
+- CUDA 12.1 (Optional for GPU acceleration | 可选,用于GPU加速)
 - Windows/Linux/MacOS
 
+### Installation Steps | 安装步骤
 
-### 快速安装 | Quick Installation
-
-#### 使用 conda（推荐） | Using conda (recommended)
-
-一键安装所有依赖:
-
+1. Clone the repository | 克隆仓库
 ```bash
-# 克隆仓库 | Clone the repository
 git clone https://github.com/your-username/pelvis_seg.git
 cd pelvis_seg
-
-# 创建并激活环境 | Create and activate environment
-conda env create -f environment.yml
-conda activate pelvis_seg
-
 ```
-或者
-运行 *install.py* 文件
-
-如果遇到问题，可以采用下面的方式
-
-### 配置基础环境
-
-#### 方法一：使用 conda（推荐）
-
-1. 安装 [Anaconda](https://www.anaconda.com/download) 或 Miniconda
-
-2. 创建并激活新环境
-
-打开Anaconda Prompt，输入以下命令创建环境并激活
-
+2. Create and activate the conda environment | 创建并激活 conda 环境
 ```bash
+# Create environment from yml file | 从 yml 文件创建环境
+conda env create -f environment.yml
+
+# Activate environment | 激活环境
+conda activate pelvis_seg
+```
+or mannually install it | 手动安装
+```bash
+# Create and activate environment | 创建并激活环境
 conda create -n pelvis_seg python=3.10
 conda activate pelvis_seg
+
+# Install PyTorch with CUDA support | 安装PyTorch(CUDA支持)
+conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+
+# Install other dependencies | 安装其他依赖
+pip install -r requirements.txt
 ```
 
-3.下载所需要的安装包
+
+### Using Mirror Sources (Optional) | 使用镜像源（可选）
+
+For users in China | 中国用户可使用以下命令加速安装：
 
 ```bash
-conda install pyqt
-conda install vtk=9.2.2
-conda install simpleitk
-conda install numpy
-```
-#### 方法二：使用 pip
-
-如果你更倾向于使用 pip，可以按以下步骤安装：
-
-```bash
-pip install PyQt5
-pip install vtk==9.2.2
-pip install SimpleITK
-pip install numpy
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-### 验证安装
 
-创建一个 Python 文件来验证安装是否成功：
+### Troubleshooting | 常见问题
 
-```python
-import sys
-import vtk
-import SimpleITK as sitk
-import numpy as np
-from PyQt5.QtWidgets import QApplication
-
-# 打印版本信息
-print(f"VTK version: {vtk.vtkVersion().GetVTKVersion()}")
-print(f"SimpleITK version: {sitk.Version.VersionString()}")
-print(f"NumPy version: {np.__version__}")
-print(f"PyQt version: {QApplication.qt_version()}")
-```
-
-### 常见问题
-
-1. VTK 安装失败
-   - 尝试使用 conda 安装而不是 pip
-   - 确保系统已安装必要的编译工具
-
-2. PyQt5 导入错误
-   - 确保安装了所有必要的 PyQt5 子模块
-   - 在 macOS 上可能需要额外设置：`export QT_MAC_WANTS_LAYER=1`
-
-3. 版本兼容性问题
-   - 建议严格按照指定版本安装
-   - 如果遇到兼容性问题，可以尝试使用 conda 环境
-
-### 镜像源设置（可选）
-
-如果下载速度较慢，可以使用国内镜像源：
-
-#### pip 镜像
-```bash
-pip install <包名> -i https://pypi.tuna.tsinghua.edu.cn/simple
-```
-
-#### conda 镜像
-```bash
-conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
-conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
-conda config --set show_channel_urls yes
-```
+如遇安装问题，请查看我们的 [GitHub Issues](https://github.com/your-username/pelvis_seg/issues) 或创建新的问题。
 
 ### 支持的文件格式
 - DICOM (.dcm)
@@ -159,4 +122,3 @@ From PENGWIN Task 2 Pelvic Fragment Segmentation Challenge training dataset, con
 如果遇到安装问题，可以：
 1. 查看项目 GitHub Issues
 2. 在 Stack Overflow 上搜索相关问题
-
