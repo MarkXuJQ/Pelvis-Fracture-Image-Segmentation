@@ -5,7 +5,7 @@ import matplotlib
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QLabel, 
                              QPushButton, QVBoxLayout, QHBoxLayout, QWidget, 
                              QComboBox, QSlider, QMessageBox, QGroupBox,
-                             QRadioButton, QButtonGroup, QToolBar, QCheckBox, QDialog, QProgressDialog, QFrame)
+                             QRadioButton, QButtonGroup, QToolBar, QCheckBox, QDialog, QProgressDialog, QFrame, QGridLayout)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImage, QCursor, QPen, QBrush, QColor, QPainter
 import matplotlib.pyplot as plt
@@ -20,6 +20,10 @@ from medical_viewer.image_manager import ImageSelectionDialog
 from utils.download_thread import DownloadThread
 from utils.progress_dialog import UploadProgressDialog
 import tempfile
+import vtk
+from vtk.util import numpy_support
+from skimage import measure
+from scipy import ndimage
 
 # 减少各种库的日志输出
 logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
@@ -43,7 +47,6 @@ os.environ['PYTORCH_NO_DOWNLOAD'] = '1'
 try:
     # 先尝试相对导入 (当作为包的一部分导入时可以工作)
     from .medical_image_utils import MedicalImageProcessor, list_available_models
-    from .vtk_3d_viewer import VTK3DViewer
 except ImportError:
     # 相对导入失败时，回退到绝对导入 (直接运行脚本时使用)
     from system.medical_viewer.medical_image_utils import MedicalImageProcessor, list_available_models
@@ -674,39 +677,125 @@ class MedicalImageApp(QMainWindow):
         main_layout.addWidget(control_panel)
         
         # 创建右侧图像显示区域（横向排列）
-        image_display = QWidget()
-        image_layout = QHBoxLayout(image_display)  # 横向布局
+        self.image_display = QWidget()
+        self.image_layout = QHBoxLayout(self.image_display)  # 横向布局
         
         # 原始图像显示
-        original_group = QGroupBox("原始图像")
-        original_layout = QVBoxLayout(original_group)
+        self.original_group = QGroupBox("原始图像")
+        self.original_layout = QVBoxLayout(self.original_group)
         
         original_fig = Figure(figsize=(5, 5), dpi=100)
         self.original_view = InteractiveCanvas(original_fig)
         self.original_view.pointAdded.connect(self.on_point_added)
         self.original_view.boxDrawn.connect(self.on_box_drawn)
         
-        original_layout.addWidget(self.original_view)
-        
-        # 设置原始图像组的布局
-        image_layout.addWidget(original_group)
+        self.original_layout.addWidget(self.original_view)
         
         # 分割结果显示
-        result_group = QGroupBox("分割结果")
-        result_layout = QVBoxLayout(result_group)
+        self.result_group = QGroupBox("分割结果")
+        self.result_layout = QVBoxLayout(self.result_group)
         
         result_fig = Figure(figsize=(5, 5), dpi=100)
         self.result_canvas = FigureCanvas(result_fig)
         self.result_ax = result_fig.add_subplot(111)
         self.result_ax.axis('off')
         
-        result_layout.addWidget(self.result_canvas)
+        self.result_layout.addWidget(self.result_canvas)
         
-        # 设置分割结果组的布局
-        image_layout.addWidget(result_group)
+        # 合并显示区（3D模式下用）
+        self.merged_group = QWidget()
+        self.merged_layout = QGridLayout(self.merged_group)
+        self.merged_layout.setHorizontalSpacing(18)
+        self.merged_layout.setVerticalSpacing(18)
+        self.merged_layout.setContentsMargins(10, 10, 10, 10)
+        # 轴状视图
+        self.axial_group = QGroupBox("轴状视图")
+        self.axial_group.setStyleSheet("QGroupBox {font-size: 12px; font-weight: bold; margin-top: 2px; margin-bottom: 2px; padding-top: 8px; padding-left: 8px;} ")
+        axial_layout = QVBoxLayout(self.axial_group)
+        axial_layout.setContentsMargins(6, 6, 6, 6)
+        axial_layout.setSpacing(3)
+        self.axial_canvas = FigureCanvas(Figure(figsize=(3.5, 3.5), dpi=100))
+        self.axial_ax = self.axial_canvas.figure.add_subplot(111)
+        self.axial_ax.axis('off')
+        self.axial_slider = QSlider(Qt.Horizontal)
+        self.axial_slider.setMinimum(0)
+        self.axial_slider.setMaximum(0)
+        self.axial_slider.setValue(0)
+        self.axial_slider.setSingleStep(1)
+        self.axial_slider.valueChanged.connect(self.on_axial_slice_changed)
+        self.axial_slider.setStyleSheet("QSlider {min-width: 180px; max-width: 240px; margin-left: 8px; margin-right: 8px;}")
+        axial_layout.addWidget(self.axial_canvas)
+        axial_layout.addWidget(self.axial_slider, alignment=Qt.AlignHCenter)
+        # 冠状视图
+        self.coronal_group = QGroupBox("冠状视图")
+        self.coronal_group.setStyleSheet("QGroupBox {font-size: 12px; font-weight: bold; margin-top: 2px; margin-bottom: 2px; padding-top: 8px; padding-left: 8px;} ")
+        coronal_layout = QVBoxLayout(self.coronal_group)
+        coronal_layout.setContentsMargins(6, 6, 6, 6)
+        coronal_layout.setSpacing(3)
+        self.coronal_canvas = FigureCanvas(Figure(figsize=(3.5, 3.5), dpi=100))
+        self.coronal_ax = self.coronal_canvas.figure.add_subplot(111)
+        self.coronal_ax.axis('off')
+        self.coronal_slider = QSlider(Qt.Horizontal)
+        self.coronal_slider.setMinimum(0)
+        self.coronal_slider.setMaximum(0)
+        self.coronal_slider.setValue(0)
+        self.coronal_slider.setSingleStep(1)
+        self.coronal_slider.valueChanged.connect(self.on_coronal_slice_changed)
+        self.coronal_slider.setStyleSheet("QSlider {min-width: 180px; max-width: 240px; margin-left: 8px; margin-right: 8px;}")
+        coronal_layout.addWidget(self.coronal_canvas)
+        coronal_layout.addWidget(self.coronal_slider, alignment=Qt.AlignHCenter)
+        # 矢状视图
+        self.sagittal_group = QGroupBox("矢状视图")
+        self.sagittal_group.setStyleSheet("QGroupBox {font-size: 12px; font-weight: bold; margin-top: 2px; margin-bottom: 2px; padding-top: 8px; padding-left: 8px;} ")
+        sagittal_layout = QVBoxLayout(self.sagittal_group)
+        sagittal_layout.setContentsMargins(6, 6, 6, 6)
+        sagittal_layout.setSpacing(3)
+        self.sagittal_canvas = FigureCanvas(Figure(figsize=(3.5, 3.5), dpi=100))
+        self.sagittal_ax = self.sagittal_canvas.figure.add_subplot(111)
+        self.sagittal_ax.axis('off')
+        self.sagittal_slider = QSlider(Qt.Horizontal)
+        self.sagittal_slider.setMinimum(0)
+        self.sagittal_slider.setMaximum(0)
+        self.sagittal_slider.setValue(0)
+        self.sagittal_slider.setSingleStep(1)
+        self.sagittal_slider.valueChanged.connect(self.on_sagittal_slice_changed)
+        self.sagittal_slider.setStyleSheet("QSlider {min-width: 180px; max-width: 240px; margin-left: 8px; margin-right: 8px;}")
+        sagittal_layout.addWidget(self.sagittal_canvas)
+        sagittal_layout.addWidget(self.sagittal_slider, alignment=Qt.AlignHCenter)
+        # 3D模型区
+        self.model_group = QGroupBox("3D模型")
+        self.model_group.setStyleSheet("QGroupBox {font-size: 12px; font-weight: bold; margin-top: 2px; margin-bottom: 2px; padding-top: 8px; padding-left: 8px;} ")
+        model_layout = QVBoxLayout(self.model_group)
+        model_layout.setContentsMargins(6, 6, 6, 6)
+        model_layout.setSpacing(3)
+        self.model_placeholder = QLabel()
+        self.model_placeholder.setAlignment(Qt.AlignCenter)
+        self.model_placeholder.setStyleSheet("background: #f3f6fa; border: 2px dashed #b0b0b0; color: #888; font-size: 16px; border-radius: 12px;")
+        self.model_placeholder.setMinimumHeight(180)
+        self.model_placeholder.setText("<div style='margin-top:40px;'><img src='https://img.icons8.com/ios-filled/50/cccccc/cube.png' width='40'><br>3D模型<br><span style='font-size:12px;'>(待实现)</span></div>")
+        model_layout.addWidget(self.model_placeholder)
+        # 田字格布局
+        self.merged_layout.addWidget(self.axial_group, 0, 0)
+        self.merged_layout.addWidget(self.coronal_group, 0, 1)
+        self.merged_layout.addWidget(self.sagittal_group, 1, 0)
+        self.merged_layout.addWidget(self.model_group, 1, 1)
+        self.merged_group.setVisible(False)
+        
+        # 默认添加原始和分割结果组
+        self.image_layout.addWidget(self.original_group)
+        self.image_layout.addWidget(self.result_group)
+        self.image_layout.addWidget(self.merged_group)
         
         # 添加图像显示区到主布局
-        main_layout.addWidget(image_display, 1)  # 1是拉伸因子，使其占用更多空间
+        main_layout.addWidget(self.image_display, 1)
+        
+        # 添加"显示原图"按钮（仅3D分割时显示）
+        self.show_original_btn = QPushButton("显示原图")
+        self.show_original_btn.setVisible(False)
+        self.show_original_btn.setCheckable(True)
+        self.show_original_btn.setChecked(False)
+        self.show_original_btn.clicked.connect(self.toggle_show_original)
+        control_layout.addWidget(self.show_original_btn)
         
         # 初始检查模型选择
         self.on_model_changed(self.model_selector.currentIndex())
@@ -838,66 +927,85 @@ class MedicalImageApp(QMainWindow):
         """更新图像显示"""
         if not hasattr(self, 'processor') or self.processor.image_data is None:
             return
-            
-        # 获取当前切片
-        if self.processor.is_3d:
-            if self.current_view == 'axial':
-                img = self.processor.image_data[self.axial_slice]
-            elif self.current_view == 'coronal':
-                img = self.processor.image_data[:, self.coronal_slice, :]
-                img = np.rot90(img, k=2)  # 旋转180度
-            elif self.current_view == 'sagittal':
-                img = self.processor.image_data[:, :, self.sagittal_slice]
-                img = np.rot90(img, k=2)  # 旋转180度
-        else:
+        is_3d = getattr(self.processor, 'is_3d', False)
+        selected_model = self.model_selector.currentText().split(':')[0] if hasattr(self, 'model_selector') else ''
+        is_3d_model = self.is_3d_capable_model(selected_model)
+        # 2D模式（X光片等）
+        if not is_3d or not is_3d_model:
+            self.original_group.setVisible(True)
+            self.result_group.setVisible(True)
+            self.merged_group.setVisible(False)
+            self.show_original_btn.setVisible(False)
+            # 获取当前切片
             img = self.processor.image_data
-        
-        # 显示图像
-        self.original_view.display_image(img)
-        
-        # 更新点和框
-        self.original_view.set_circles(self.points, self.point_labels)
-        self.draw_boxes()
-        
-        # 显示分割结果
-        self.display_result(img)
-        
-        # 如果有彩色分割，显示图例按钮
-        if hasattr(self, 'region_colors') and self.region_colors:
-            if not hasattr(self, 'legend_btn'):
-                self.legend_btn = QPushButton("显示颜色图例", self)
-                self.legend_btn.clicked.connect(self.show_color_legend)
-                # 检查是否有toolbar属性
-                if hasattr(self, 'toolbar'):
-                    self.toolbar.addWidget(self.legend_btn)
+            if is_3d:
+                if self.current_view == 'axial':
+                    img = self.processor.image_data[self.axial_slice]
+                elif self.current_view == 'coronal':
+                    img = self.processor.image_data[:, self.coronal_slice, :]
+                    img = np.rot90(img, k=2)
+                elif self.current_view == 'sagittal':
+                    img = self.processor.image_data[:, :, self.sagittal_slice]
+                    img = np.rot90(img, k=2)
+            self.original_view.display_image(img)
+            self.original_view.set_circles(self.points, self.point_labels)
+            self.draw_boxes()
+            self.display_result(img)
+        else:
+            # 3D分割模式，田字格显示区
+            self.original_group.setVisible(False)
+            self.result_group.setVisible(False)
+            self.merged_group.setVisible(True)
+            self.show_original_btn.setVisible(True)
+            # 获取三视图切片
+            axial_img = self.processor.image_data[self.axial_slice]
+            coronal_img = self.processor.image_data[:, self.coronal_slice, :]
+            coronal_img = np.rot90(coronal_img, k=2)
+            sagittal_img = self.processor.image_data[:, :, self.sagittal_slice]
+            sagittal_img = np.rot90(sagittal_img, k=2)
+            # 设置滑块最大值
+            self.axial_slider.setMaximum(self.processor.image_data.shape[0]-1)
+            self.axial_slider.setValue(self.axial_slice)
+            self.coronal_slider.setMaximum(self.processor.image_data.shape[1]-1)
+            self.coronal_slider.setValue(self.coronal_slice)
+            self.sagittal_slider.setMaximum(self.processor.image_data.shape[2]-1)
+            self.sagittal_slider.setValue(self.sagittal_slice)
+            # 判断显示原图还是分割结果
+            show_original = getattr(self, 'showing_original', False) or self.mask is None
+            # 轴状
+            self.axial_ax.clear()
+            if show_original:
+                if len(axial_img.shape) == 3:
+                    self.axial_ax.imshow(axial_img)
                 else:
-                    # 将按钮添加到合适的位置，例如工具区域
-                    if hasattr(self, 'tool_area'):
-                        self.tool_area.layout().addWidget(self.legend_btn)
-                    else:
-                        # 创建一个框架来容纳按钮
-                        if not hasattr(self, 'legend_frame'):
-                            self.legend_frame = QFrame(self)
-                            legend_layout = QHBoxLayout(self.legend_frame)
-                            legend_layout.setContentsMargins(0, 0, 0, 0)
-                            self.legend_frame.setLayout(legend_layout)
-                            # 添加到主布局的底部
-                            if hasattr(self, 'main_layout'):
-                                self.main_layout.addWidget(self.legend_frame)
-                            else:
-                                # 最后尝试添加到中央窗口部件的布局
-                                if hasattr(self, 'centralWidget'):
-                                    self.centralWidget().layout().addWidget(self.legend_frame)
-                        
-                        # 添加按钮到图例框架
-                        if hasattr(self, 'legend_frame'):
-                            self.legend_frame.layout().addWidget(self.legend_btn)
-        
-            # 确保按钮可见
-            if hasattr(self, 'legend_btn'):
-                self.legend_btn.setVisible(True)
-        elif hasattr(self, 'legend_btn'):
-            self.legend_btn.setVisible(False)
+                    self.axial_ax.imshow(axial_img, cmap='gray')
+            else:
+                self._draw_segmentation_on_ax(self.axial_ax, axial_img, view='axial')
+            self.axial_ax.axis('off')
+            self.axial_canvas.draw()
+            # 冠状
+            self.coronal_ax.clear()
+            if show_original:
+                if len(coronal_img.shape) == 3:
+                    self.coronal_ax.imshow(coronal_img)
+                else:
+                    self.coronal_ax.imshow(coronal_img, cmap='gray')
+            else:
+                self._draw_segmentation_on_ax(self.coronal_ax, coronal_img, view='coronal')
+            self.coronal_ax.axis('off')
+            self.coronal_canvas.draw()
+            # 矢状
+            self.sagittal_ax.clear()
+            if show_original:
+                if len(sagittal_img.shape) == 3:
+                    self.sagittal_ax.imshow(sagittal_img)
+                else:
+                    self.sagittal_ax.imshow(sagittal_img, cmap='gray')
+            else:
+                self._draw_segmentation_on_ax(self.sagittal_ax, sagittal_img, view='sagittal')
+            self.sagittal_ax.axis('off')
+            self.sagittal_canvas.draw()
+            # 右下角3D模型占位暂不变
 
     def display_result(self, current_slice):
         """显示分割结果"""
@@ -1667,42 +1775,33 @@ class MedicalImageApp(QMainWindow):
             QMessageBox.critical(self, "错误", f"保存结果失败: {str(e)}")
 
     def view_in_3d(self):
-        """在3D中查看图像"""
+        """在3D模型区嵌入3D视图（原图阈值/分割掩码连通域自动切换）"""
         if not hasattr(self, 'processor') or not self.processor.image_data is not None:
             QMessageBox.warning(self, "错误", "请先加载图像")
             return
-
         if not self.processor.is_3d:
             QMessageBox.warning(self, "错误", "只有3D图像才能以3D方式查看")
             return
-
-        # 获取当前选择的模型
         current_model = self.model_selector.currentText() if hasattr(self, 'model_selector') else None
-
-        # 检查是否是支持3D的模型
         if current_model and not self.is_3d_capable_model(current_model):
             QMessageBox.information(self, "提示",
                                   f"当前选择的 {current_model} 模型不支持3D显示。\n"
                                   "请使用 3D U-Net 或其他3D分割模型。")
             return
-
-        # 创建3D查看器
-        if not hasattr(self, 'vtk_viewer'):
-            self.vtk_viewer = VTK3DViewer()
-
-        # 获取当前图像数据
         volume = self.processor.image_data
-
-        # 如果已经有掩码，也加载它
-        mask = self.current_mask if hasattr(self, 'current_mask') and self.current_mask is not None else None
-
-        # 设置数据
-        self.vtk_viewer.set_volume_data(volume, mask)
-
-        # 显示3D查看器
-        self.vtk_viewer.setWindowTitle("3D医学图像查看器")
-        self.vtk_viewer.resize(800, 600)
-        self.vtk_viewer.show()
+        mask = self.mask if hasattr(self, 'mask') and self.mask is not None else None
+        # 移除原有3D窗口
+        if hasattr(self, 'vtk_embedded_widget') and self.vtk_embedded_widget is not None:
+            self.vtk_embedded_widget.setParent(None)
+            self.vtk_embedded_widget.deleteLater()
+            self.vtk_embedded_widget = None
+        self.model_placeholder.setVisible(False)
+        # 嵌入新的3D窗口
+        self.vtk_embedded_widget = Embedded3DViewer(parent=self.model_group)
+        self.vtk_embedded_widget.set_volume_and_mask(volume, mask)
+        layout = self.model_group.layout()
+        layout.addWidget(self.vtk_embedded_widget)
+        self.vtk_embedded_widget.show()
 
     def is_3d_capable_model(self, model_name):
         """判断所选模型是否支持3D显示"""
@@ -1831,6 +1930,169 @@ class MedicalImageApp(QMainWindow):
         
         finally:
             progress_dialog.setValue(100)
+
+    def toggle_show_original(self):
+        """切换显示原图/分割结果（仅3D分割）"""
+        if not hasattr(self, 'merged_group'):
+            return
+        self.showing_original = self.show_original_btn.isChecked()
+        self.update_display()
+
+    def _draw_segmentation_on_ax(self, ax, img, view):
+        """在指定ax上绘制分割结果叠加"""
+        if not hasattr(self, 'box_masks') or not self.box_masks:
+            if len(img.shape) == 3:
+                ax.imshow(img)
+            else:
+                ax.imshow(img, cmap='gray')
+            return
+        # 获取对应切片的掩码
+        if view == 'axial':
+            mask = self.mask[self.axial_slice]
+        elif view == 'coronal':
+            mask = self.mask[:, self.coronal_slice, :]
+            mask = np.rot90(mask, k=2)
+        elif view == 'sagittal':
+            mask = self.mask[:, :, self.sagittal_slice]
+            mask = np.rot90(mask, k=2)
+        else:
+            mask = None
+        if mask is None:
+            if len(img.shape) == 3:
+                ax.imshow(img)
+            else:
+                ax.imshow(img, cmap='gray')
+            return
+        # 叠加分割掩码
+        if img.max() > 1.0:
+            img_norm = img / 255.0
+        else:
+            img_norm = img.copy()
+        overlay = np.stack([img_norm] * 3, axis=2)
+        # 区分模型
+        if hasattr(self, 'colored_mask') and self.colored_mask is not None:
+            if view == 'axial':
+                colored_slice = self.colored_mask[self.axial_slice]
+            elif view == 'coronal':
+                colored_slice = self.colored_mask[:, self.coronal_slice, :]
+                colored_slice = np.rot90(colored_slice, k=2)
+            elif view == 'sagittal':
+                colored_slice = self.colored_mask[:, :, self.sagittal_slice]
+                colored_slice = np.rot90(colored_slice, k=2)
+            if colored_slice.shape[:2] == overlay.shape[:2]:
+                mask_visible = colored_slice[:,:,3] > 0
+                alpha = 0.6
+                for i in range(3):
+                    if np.any(mask_visible):
+                        temp = overlay[:,:,i].copy()
+                        temp[mask_visible] = (1-alpha) * temp[mask_visible] + alpha * colored_slice[:,:,i][mask_visible]
+                        overlay[:,:,i] = temp
+            ax.imshow(overlay)
+        else:
+            # UNet3D区域颜色
+            sacrum_mask = (mask >= 1) & (mask <= 10)
+            left_hip_mask = (mask >= 11) & (mask <= 20)
+            right_hip_mask = (mask >= 21) & (mask <= 30)
+            alpha = 0.6
+            if np.any(sacrum_mask):
+                overlay[sacrum_mask, 0] = (1-alpha) * overlay[sacrum_mask, 0] + alpha * 1.0
+                overlay[sacrum_mask, 1] = (1-alpha) * overlay[sacrum_mask, 1]
+                overlay[sacrum_mask, 2] = (1-alpha) * overlay[sacrum_mask, 2]
+            if np.any(left_hip_mask):
+                overlay[left_hip_mask, 0] = (1-alpha) * overlay[left_hip_mask, 0]
+                overlay[left_hip_mask, 1] = (1-alpha) * overlay[left_hip_mask, 1] + alpha * 1.0
+                overlay[left_hip_mask, 2] = (1-alpha) * overlay[left_hip_mask, 2]
+            if np.any(right_hip_mask):
+                overlay[right_hip_mask, 0] = (1-alpha) * overlay[right_hip_mask, 0]
+                overlay[right_hip_mask, 1] = (1-alpha) * overlay[right_hip_mask, 1]
+                overlay[right_hip_mask, 2] = (1-alpha) * overlay[right_hip_mask, 2] + alpha * 1.0
+            ax.imshow(overlay)
+
+    def on_axial_slice_changed(self, value):
+        self.axial_slice = value
+        self.update_display()
+    def on_coronal_slice_changed(self, value):
+        self.coronal_slice = value
+        self.update_display()
+    def on_sagittal_slice_changed(self, value):
+        self.sagittal_slice = value
+        self.update_display()
+
+
+class Embedded3DViewer(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.vl = QVBoxLayout(self)
+        self.vtkWidget = None
+        self.renWin = None
+        self.ren = None
+        self.iren = None
+        self.setMinimumHeight(200)
+
+    def clear(self):
+        if self.vtkWidget:
+            self.vtkWidget.setParent(None)
+            self.vtkWidget.deleteLater()
+            self.vtkWidget = None
+        self.renWin = None
+        self.ren = None
+        self.iren = None
+
+    def set_volume_and_mask(self, volume, mask=None):
+        self.clear()
+        from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+        self.vtkWidget = QVTKRenderWindowInteractor(self)
+        self.vl.addWidget(self.vtkWidget)
+        self.ren = vtk.vtkRenderer()
+        self.vtkWidget.GetRenderWindow().AddRenderer(self.ren)
+        self.iren = self.vtkWidget.GetRenderWindow().GetInteractor()
+        self.renWin = self.vtkWidget.GetRenderWindow()
+        # 选择模式
+        if mask is not None and np.any(mask):
+            self.show_segmentation_3d(mask)
+        else:
+            self.show_volume_3d(volume)
+        self.ren.ResetCamera()
+        self.renWin.Render()
+        self.vtkWidget.Initialize()
+        self.vtkWidget.Start()
+
+    def show_volume_3d(self, volume):
+        # 简单骨窗阈值
+        threshold = 300  # 可根据需要调整
+        verts, faces, _, _ = measure.marching_cubes(volume, level=threshold)
+        self._add_mesh_to_renderer(verts, faces, color=(1,1,0.8))
+
+    def show_segmentation_3d(self, mask):
+        # 连通域分析，提取最大连通区域
+        labeled, num = ndimage.label(mask > 0)
+        if num == 0:
+            return
+        largest = (labeled == np.argmax(np.bincount(labeled.flat)[1:])+1)
+        verts, faces, _, _ = measure.marching_cubes(largest.astype(np.uint8), level=0.5)
+        self._add_mesh_to_renderer(verts, faces, color=(0.8,0.2,0.2))
+
+    def _add_mesh_to_renderer(self, verts, faces, color=(1,1,1)):
+        points = vtk.vtkPoints()
+        for v in verts:
+            points.InsertNextPoint(v[0], v[1], v[2])
+        triangles = vtk.vtkCellArray()
+        for f in faces:
+            tri = vtk.vtkTriangle()
+            for i in range(3):
+                tri.GetPointIds().SetId(i, int(f[i]))
+            triangles.InsertNextCell(tri)
+        poly = vtk.vtkPolyData()
+        poly.SetPoints(points)
+        poly.SetPolys(triangles)
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(poly)
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(*color)
+        actor.GetProperty().SetOpacity(0.7)
+        self.ren.AddActor(actor)
+        self.ren.SetBackground(0.95, 0.97, 1.0)
 
 
 if __name__ == "__main__":

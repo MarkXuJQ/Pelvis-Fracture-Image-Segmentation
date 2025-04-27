@@ -11,13 +11,13 @@ import vtk
 from vtk.util import numpy_support
 import traceback
 
+
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
 from medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
 from medical_viewer.segmenters.unet_3d_segmenter import UNet3DSegmenter  # 确保路径一致
-
 
 class MedicalImageProcessor:
     """医学图像处理类，提供加载、显示和基础处理功能"""
