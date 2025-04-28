@@ -1,3 +1,4 @@
+!pip install simpleitk
 # 1. 创建父目录
 import os
 os.makedirs('/content/data/images', exist_ok=True)
@@ -290,6 +291,14 @@ NUM_CLASSES = 31  # 0=background, 1-10=sacrum, 11-20=left hip, 21-30=right hip
 model = UNet3D(in_channels=1, out_channels=NUM_CLASSES).to(device)
 criterion = nn.CrossEntropyLoss()  # Change to CrossEntropyLoss for multi-class
 optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
+# 切换为ReduceLROnPlateau
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer,
+    mode='min',
+    factor=0.5,
+    patience=3,
+    verbose=True
+)
 
 class TrainingMonitor:
     def __init__(self):
@@ -526,12 +535,12 @@ def load_checkpoint(model, optimizer, checkpoint_path):
     
     # 重新计算remaining_epochs并创建新的scheduler
     remaining_epochs = NUM_EPOCHS - start_epoch
-    scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=LEARNING_RATE,
-        epochs=remaining_epochs,
-        steps_per_epoch=len(train_loader),
-        pct_start=0.3
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 
+        mode='min', 
+        factor=0.5, 
+        patience=3, 
+        verbose=True
     )
     
     # 如果checkpoint中包含scheduler状态，则恢复它
@@ -553,22 +562,7 @@ def train_model(model, train_loader, val_image_path, val_label_path, criterion, 
     best_loss = float('inf')
     best_dice = 0
     start_epoch = 0
-    scheduler = None
-    
-    if resume_from:
-        start_epoch, best_loss, best_dice, scheduler = load_checkpoint(model, optimizer, resume_from)
-        print(f"Resuming training from epoch {start_epoch}")
-    
-    if scheduler is None:
-        # 如果不是从checkpoint恢复，或者checkpoint中没有scheduler，创建新的scheduler
-        scheduler = optim.lr_scheduler.OneCycleLR(
-            optimizer,
-            max_lr=LEARNING_RATE,
-            epochs=num_epochs,
-            steps_per_epoch=len(train_loader),
-            pct_start=0.3
-        )
-    
+    # scheduler 已在外部初始化
     scaler = torch.amp.GradScaler('cuda')
     total_steps = len(train_loader) * num_epochs
     current_step = 0
@@ -596,7 +590,6 @@ def train_model(model, train_loader, val_image_path, val_label_path, criterion, 
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad()
-                scheduler.step()
                 torch.cuda.empty_cache()
                 current_step += 1
 
@@ -614,8 +607,10 @@ def train_model(model, train_loader, val_image_path, val_label_path, criterion, 
         current_lr = optimizer.param_groups[0]['lr']
         
         monitor.update(avg_loss, current_lr)
+        # 在每个epoch结束后用avg_loss调整学习率
+        scheduler.step(avg_loss)
 
-        if (epoch + 1) % 10 == 0:  # 改为每10个epoch验证一次
+        if (epoch + 1) % 20 == 0:  # 改为每20个epoch验证一次
             torch.cuda.empty_cache()
             model.eval()
             with torch.no_grad():
@@ -645,8 +640,8 @@ def train_model(model, train_loader, val_image_path, val_label_path, criterion, 
             }, best_model_loss_path)
             print(f"Saved new best model with loss: {best_loss:.4f}")
 
-        # 每10个epoch保存检查点
-        if (epoch + 1) % 10 == 0:  # 同样改为每10个epoch
+        # 每20个epoch保存检查点
+        if (epoch + 1) % 20 == 0:  # 同样改为每20个epoch
             checkpoint_path = os.path.join(CHECKPOINT_DIR, f'checkpoint_epoch_{epoch+1:03d}.pth')
             torch.save({
                 'epoch': epoch,
@@ -703,7 +698,7 @@ def visualize_single_slice(image_path, label_path, model_path, save_dir, slice_i
     image_normalized = (image_normalized + 1000) / 2000
     
     # 加载模型和预测
-    checkpoint = torch.load(model_path)
+    checkpoint = torch.load(model_path, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     prediction = predict_volume(model, image_normalized)
@@ -779,7 +774,7 @@ def visualize_comparison_three_views(image_path, label_path, model_path, save_di
     image_normalized = (image_normalized + 1000) / 2000
     
     # 加载模型和预测
-    checkpoint = torch.load(model_path)
+    checkpoint = torch.load(model_path, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     prediction = predict_volume(model, image_normalized)
@@ -828,3 +823,65 @@ def visualize_comparison_three_views(image_path, label_path, model_path, save_di
     plt.close()
     
     print(f"Comparison saved to: {save_path}")
+
+def visualize_three_views_prediction(image_path, model_path, save_dir, title=None):
+    """
+    展示三视图（Sagittal, Coronal, Axial）的预测结果。
+    Args:
+        image_path: CT图像路径
+        model_path: 模型权重路径
+        save_dir: 保存目录
+        title: 图像标题
+    """
+    import os
+    image = sitk.GetArrayFromImage(sitk.ReadImage(image_path)).astype(np.float32)
+    image_normalized = np.clip(image, -1000, 1000)
+    image_normalized = (image_normalized + 1000) / 2000
+
+    checkpoint = torch.load(model_path, weights_only=False)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
+    prediction = predict_volume(model, image_normalized)
+
+    D, H, W = prediction.shape
+    mid_d, mid_h, mid_w = D // 2, H // 2, W // 2
+
+    plt.figure(figsize=(18, 6))
+    if title is not None:
+        plt.suptitle(title, fontsize=16)
+    else:
+        plt.suptitle(f"Prediction using {os.path.basename(model_path)}", fontsize=16)
+
+    # Sagittal
+    plt.subplot(1, 3, 1)
+    plt.imshow(prediction[:, :, mid_w], cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+    plt.title('Sagittal View')
+    plt.axis('off')
+
+    # Coronal
+    plt.subplot(1, 3, 2)
+    plt.imshow(prediction[:, mid_h, :], cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+    plt.title('Coronal View')
+    plt.axis('off')
+
+    # Axial
+    plt.subplot(1, 3, 3)
+    plt.imshow(prediction[mid_d, :, :], cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+    plt.title('Axial View')
+    plt.axis('off')
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f'three_views_prediction.png')
+    plt.savefig(save_path, bbox_inches='tight', dpi=200)
+    plt.close()
+    print(f"Three-view prediction saved to: {save_path}")
+    return save_path
+
+# 在训练结束后添加三视图预测展示
+visualize_three_views_prediction(
+    image_path=val_image_path,
+    model_path=best_model_dice_path,  # 或者best_model_loss_path
+    save_dir=os.path.join(PATHS['results'], 'predictions'),
+    title=None
+)

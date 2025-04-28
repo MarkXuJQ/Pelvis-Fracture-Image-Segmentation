@@ -18,6 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
 from medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
 from medical_viewer.segmenters.unet_3d_segmenter import UNet3DSegmenter  # 确保路径一致
+from medical_viewer.segmenters.myunet3d_segmenter import MyUNet3DSegmenter
 
 class MedicalImageProcessor:
     """医学图像处理类，提供加载、显示和基础处理功能"""
@@ -366,6 +367,9 @@ class MedicalImageProcessor:
                 print("标签映射:")
                 for idx, label in self.segmenter.idx_to_label.items():
                     print(f"  索引 {idx} -> 标签值 {label}")
+        elif model_name == 'myunet3d':
+            self.segmenter = MyUNet3DSegmenter(weights_path=kwargs.get('checkpoint_path'), device=kwargs.get('device', 'cuda'))
+            print("已创建自定义U-Net3D分割器")
         else:
             raise ValueError(f"不支持的模型: {model_name}")
 
@@ -500,6 +504,9 @@ class MedicalImageProcessor:
         
         return self.mask
 
+    def is_3d_layout_model(self, model_name):
+        return model_name in ['unet3d', 'myunet3d']
+
 def list_available_models() -> dict:
     """
     列出系统中可用的分割模型
@@ -524,6 +531,12 @@ def list_available_models() -> dict:
             'description': '3D U-Net (适用于CT/MRI体积分割)',
             'weights_path': 'weights/U-net/final_model.pth',
             'class': UNet3DSegmenter,
+            'is_3d_capable': True
+        },
+        'myunet3d': {
+            'description': '自定义U-Net3D骨盆分割',
+            'weights_path': 'weights/MyUnet3D/best_model_loss.pth',
+            'class': MyUNet3DSegmenter,
             'is_3d_capable': True
         }
     }

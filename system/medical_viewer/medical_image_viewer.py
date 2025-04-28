@@ -525,7 +525,7 @@ class MedicalImageApp(QMainWindow):
         
         self.model_selector = QComboBox()
         for model_name, model_info in self.available_models.items():
-            self.model_selector.addItem(f"{model_name}: {model_info['description']}")
+            self.model_selector.addItem(model_name)
         self.model_selector.currentIndexChanged.connect(self.on_model_changed)
         model_layout.addWidget(self.model_selector)
         
@@ -929,16 +929,15 @@ class MedicalImageApp(QMainWindow):
             return
         is_3d = getattr(self.processor, 'is_3d', False)
         selected_model = self.model_selector.currentText().split(':')[0] if hasattr(self, 'model_selector') else ''
-        is_3d_model = self.is_3d_capable_model(selected_model)
-        # 2D模式（X光片等）
-        if not is_3d or not is_3d_model:
+        if self.is_2d_layout_model(selected_model):
+            # 2D布局
             self.original_group.setVisible(True)
             self.result_group.setVisible(True)
             self.merged_group.setVisible(False)
             self.show_original_btn.setVisible(False)
             # 获取当前切片
             img = self.processor.image_data
-            if is_3d:
+            if getattr(self.processor, 'is_3d', False):
                 if self.current_view == 'axial':
                     img = self.processor.image_data[self.axial_slice]
                 elif self.current_view == 'coronal':
@@ -951,8 +950,8 @@ class MedicalImageApp(QMainWindow):
             self.original_view.set_circles(self.points, self.point_labels)
             self.draw_boxes()
             self.display_result(img)
-        else:
-            # 3D分割模式，田字格显示区
+        elif self.is_3d_layout_model(selected_model):
+            # 3D田字格布局
             self.original_group.setVisible(False)
             self.result_group.setVisible(False)
             self.merged_group.setVisible(True)
@@ -1006,6 +1005,17 @@ class MedicalImageApp(QMainWindow):
             self.sagittal_ax.axis('off')
             self.sagittal_canvas.draw()
             # 右下角3D模型占位暂不变
+        else:
+            # 默认2D布局
+            self.original_group.setVisible(True)
+            self.result_group.setVisible(True)
+            self.merged_group.setVisible(False)
+            self.show_original_btn.setVisible(False)
+            img = self.processor.image_data
+            self.original_view.display_image(img)
+            self.original_view.set_circles(self.points, self.point_labels)
+            self.draw_boxes()
+            self.display_result(img)
 
     def display_result(self, current_slice):
         """显示分割结果"""
@@ -1808,7 +1818,7 @@ class MedicalImageApp(QMainWindow):
         model_name = model_name.split(':')[0]  # 获取模型ID
         if model_name == 'deeplabv3':
             return False  # DeepLabV3 只支持 2D 切片分割
-        elif model_name in ['unet3d', '3dunet', 'vnet', 'medsam']:
+        elif model_name in ['unet3d', 'myunet3d']:
             return True  # 这些模型支持 3D 分割
         return False  # 默认不支持
 
@@ -2017,6 +2027,12 @@ class MedicalImageApp(QMainWindow):
     def on_sagittal_slice_changed(self, value):
         self.sagittal_slice = value
         self.update_display()
+
+    def is_2d_layout_model(self, model_name):
+        return model_name in ['medsam', 'deeplabv3']
+
+    def is_3d_layout_model(self, model_name):
+        return model_name in ['unet3d', 'myunet3d']
 
 
 class Embedded3DViewer(QWidget):
