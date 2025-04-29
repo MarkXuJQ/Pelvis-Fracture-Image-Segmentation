@@ -2113,7 +2113,7 @@ class Embedded3DViewer(QWidget):
         self._add_mesh_to_renderer(verts, faces, color=(1,1,0.8))
 
     def show_segmentation_3d(self, mask):
-        # 连通域分析，提取最大连通区域
+        # 连通域分析
         labeled, num = ndimage.label(mask > 0)
         if num == 0:
             return
