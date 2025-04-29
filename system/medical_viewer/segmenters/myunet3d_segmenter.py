@@ -3,6 +3,7 @@ import numpy as np
 import torch.nn as nn
 import SimpleITK as sitk
 import traceback
+from monai.inferers import sliding_window_inference
 
 # Define the DepthwiseSeparableConv3d class first
 class DepthwiseSeparableConv3d(nn.Module):
@@ -165,8 +166,15 @@ class MyUNet3DSegmenter:
         img = np.clip(image_3d, -1000, 1000)
         img = (img + 1000) / 2000
         with torch.no_grad():
-            input_tensor = torch.tensor(img).unsqueeze(0).unsqueeze(0).to(self.device)
-            output = self.model(input_tensor)
+            input_tensor = torch.tensor(img, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(self.device)
+            # 使用滑窗推理
+            output = sliding_window_inference(
+                inputs=input_tensor,
+                roi_size=(64, 128, 128),  # 你可以根据实际显存调整
+                sw_batch_size=1,
+                predictor=self.model,
+                overlap=0.5
+            )
             pred = torch.argmax(output, dim=1).cpu().numpy()[0]
         return pred.astype(np.uint8)
 
@@ -192,7 +200,7 @@ class MyUNet3DSegmenter:
         img = np.clip(image_3d, -1000, 1000)
         img = (img + 1000) / 2000
         with torch.no_grad():
-            input_tensor = torch.tensor(img).unsqueeze(0).unsqueeze(0).to(self.device)
+            input_tensor = torch.tensor(img, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(self.device)
             output = self.model(input_tensor)
             probs = torch.softmax(output, dim=1).cpu().numpy()[0]  # [C, D, H, W]
         return probs

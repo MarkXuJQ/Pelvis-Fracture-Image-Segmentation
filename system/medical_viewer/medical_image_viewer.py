@@ -1743,6 +1743,39 @@ class MedicalImageApp(QMainWindow):
                     QMessageBox.critical(self, "错误", f"UNet3D分割出错: {str(e)}")
                     traceback.print_exc()
             
+            # ===== MyUNet3D 分割路径 =====
+            elif selected_model == 'myunet3d':
+                print("使用MyUNet3D进行分割")
+                if not self.processor.is_3d:
+                    QMessageBox.warning(self, "提示", "MyUNet3D模型需要3D体积数据")
+                    return
+                try:
+                    volume_mask = self.processor.segmenter.segment(self.processor.image_data)
+                    if volume_mask is not None:
+                        print(f"MyUNet3D分割完成，掩码形状: {volume_mask.shape}")
+                        self.mask = volume_mask
+                        if hasattr(self.processor.segmenter, 'get_colored_segmentation'):
+                            self.colored_mask = self.processor.segmenter.get_colored_segmentation(volume_mask)
+                            self.region_colors = self.processor.segmenter.get_color_legend()
+                            print("已生成彩色分割结果")
+                        # 创建当前视图的切片掩码
+                        if self.current_view == 'axial':
+                            mask_slice = self.mask[self.axial_slice]
+                        elif self.current_view == 'coronal':
+                            mask_slice = self.mask[:, self.coronal_slice, :]
+                            mask_slice = np.rot90(mask_slice, k=2)
+                        elif self.current_view == 'sagittal':
+                            mask_slice = self.mask[:, :, self.sagittal_slice]
+                            mask_slice = np.rot90(mask_slice, k=2)
+                        self.box_masks = [mask_slice]
+                        self.view_3d_btn.setEnabled(True)
+                    else:
+                        print("MyUNet3D分割失败，返回了空掩码")
+                        QMessageBox.warning(self, "警告", "分割失败，返回了空掩码")
+                except Exception as e:
+                    QMessageBox.critical(self, "错误", f"MyUNet3D分割出错: {str(e)}")
+                    traceback.print_exc()
+
 
             # 更新显示
             self.update_display()
