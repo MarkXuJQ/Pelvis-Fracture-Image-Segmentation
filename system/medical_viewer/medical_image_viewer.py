@@ -2113,29 +2113,35 @@ class Embedded3DViewer(QWidget):
         self._add_mesh_to_renderer(verts, faces, color=(1,1,0.8))
 
     def show_segmentation_3d(self, mask):
-        # 连通域分析，显示前N大连通域，避免卡死
+        # 连通域分析，按主标签分配医学颜色
         labeled, num = ndimage.label(mask > 0)
         if num == 0:
             return
-        import matplotlib.pyplot as plt
-        cmap = plt.get_cmap('tab10')
         # 统计每个连通域的体素数，按体素数降序排列
         labels, counts = np.unique(labeled, return_counts=True)
-        # 跳过背景0
         label_count_pairs = [(l, c) for l, c in zip(labels, counts) if l != 0]
-        # 只显示前10大连通域
         label_count_pairs = sorted(label_count_pairs, key=lambda x: -x[1])[:10]
         for i, (label, count) in enumerate(label_count_pairs):
-            # 跳过极小的碎片
-            if count < 100:  # 体素数阈值可调整
+            if count < 100:
                 continue
             region = (labeled == label)
+            # 统计该连通域内的主标签
+            region_labels, region_counts = np.unique(mask[region], return_counts=True)
+            main_label = region_labels[np.argmax(region_counts)]
+            # 根据主标签分配颜色
+            if 1 <= main_label <= 10:
+                color = (1, 0, 0)  # 红色，骶骨
+            elif 11 <= main_label <= 20:
+                color = (0, 1, 0)  # 绿色，左髋骨
+            elif 21 <= main_label <= 30:
+                color = (0, 0, 1)  # 蓝色，右髋骨
+            else:
+                color = (0.7, 0.7, 0.7)  # 其他/未知为灰色
             try:
                 verts, faces, _, _ = measure.marching_cubes(region.astype(np.uint8), level=0.5)
             except Exception as e:
                 print(f"marching_cubes failed for label {label}: {e}")
                 continue
-            color = cmap(i % 10)[:3]
             self._add_mesh_to_renderer(verts, faces, color=color)
 
     def _add_mesh_to_renderer(self, verts, faces, color=(1,1,1)):
