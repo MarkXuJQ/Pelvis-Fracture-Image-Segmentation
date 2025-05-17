@@ -5,10 +5,10 @@
 本项目用于骨盆CT分割，采用了基于3D U-Net的深度学习方法。下图展示了我们所用的网络结构和训练流程：
 
 - **Unet网络结构图 / Unet Architecture**  
-  ![Unet网络](image/Unet网络.png)
+  ![Unet网络](image/Unet_network.png)
 
 - **训练Pipeline / Training Pipeline**  
-  ![Pipeline](image/pipeline.png)
+  ![Pipeline](image/pipeline_black.png)
 
 ---
 

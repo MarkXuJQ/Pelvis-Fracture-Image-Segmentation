@@ -15,10 +15,8 @@ pelvis_seg/
 │   └── training_code/      # 训练代码
 │
 ├── xray_seg/               # X光分割模块
-│   ├── data/               # X光数据目录
-│   ├── training_code/          # Jupyter notebooks
-│   └── src/                # 源代码
-│       └── utils/          # 工具函数
+│   ├── data/               # X光数据目录    
+│   └── training_code/
 │
 ├── system/                 # 系统核心模块
 │   ├── config/             # 云主机配置文件
