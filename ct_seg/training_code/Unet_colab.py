@@ -25,6 +25,7 @@ from torchvision import transforms
 from tqdm import tqdm
 from google.colab import drive
 from google.colab import files
+from scipy.spatial.distance import directed_hausdorff
 
 
 # Print versions for reproducibility
@@ -395,10 +396,11 @@ def validate(model, val_image_path, val_label_path, patch_size=(128, 128, 128)):
     
     return np.mean(dice_scores)
 
-def predict_volume(model, image, patch_size=(128, 128, 128), stride=(26, 26, 26)):
+def predict_volume(model, image, patch_size=(128, 128, 128), stride=(26, 26, 26), device=None):
     """Predict segmentation using sliding window approach"""
     model.eval()
-    device = next(model.parameters()).device
+    if device is None:
+        device = next(model.parameters()).device
 
     D, H, W = image.shape
     output = np.zeros((NUM_CLASSES, D, H, W), dtype=np.float32)
@@ -442,9 +444,9 @@ def predict_volume(model, image, patch_size=(128, 128, 128), stride=(26, 26, 26)
                                      mode='constant')
 
                     # Predict
-                    patch = torch.tensor(patch).float().unsqueeze(0).unsqueeze(0).to(device)
-                    with torch.amp.autocast('cuda'):
-                        pred = model(patch)
+                    patch_tensor = torch.tensor(patch).float().unsqueeze(0).unsqueeze(0).to(device)
+                    with torch.amp.autocast(device.type if device.type == 'cuda' else 'cpu'):
+                        pred = model(patch_tensor)
                         pred = torch.softmax(pred, dim=1).cpu().numpy()[0]  # Apply softmax for probabilities
 
                     # Unpad if necessary
@@ -613,21 +615,20 @@ def train_model(model, train_loader, val_image_path, val_label_path, criterion, 
         if (epoch + 1) % 20 == 0:  # 改为每20个epoch验证一次
             torch.cuda.empty_cache()
             model.eval()
-            with torch.no_grad():
-                dice_score = validate(model, val_image_path, val_label_path, patch_size=PATCH_SIZE)
-            print(f"Validation Dice score: {dice_score:.4f}")
+            val_dice_score = validate(model, val_image_path, val_label_path, patch_size=PATCH_SIZE)
+            print(f"Validation Dice score: {val_dice_score:.4f}")
             model.train()
 
-            if dice_score > best_dice:
-                best_dice = dice_score
+            if val_dice_score > best_dice:
+                best_dice = val_dice_score
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict(),
-                    'dice_score': dice_score,
+                    'dice_score': val_dice_score,
                 }, best_model_dice_path)
-                print(f"Saved new best model with Dice score: {dice_score:.4f}")
+                print(f"Saved new best model with Dice score: {val_dice_score:.4f}")
 
         if avg_loss < best_loss:
             best_loss = avg_loss
@@ -649,7 +650,7 @@ def train_model(model, train_loader, val_image_path, val_label_path, criterion, 
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
-                'dice_score': dice_score if 'dice_score' in locals() else None,
+                'dice_score': val_dice_score if 'dice_score' in locals() else None,
                 'best_dice': best_dice,
                 'best_loss': best_loss
             }, checkpoint_path)
@@ -659,6 +660,43 @@ def train_model(model, train_loader, val_image_path, val_label_path, criterion, 
             
         torch.cuda.empty_cache()
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}, LR: {current_lr:.6f}")
+
+    # 训练结束后对验证集进行评估
+    print('==== 验证集评估指标 ===')
+    model.eval()
+    all_dices, all_ious, all_hd95s, all_assds = [], [], [], []
+    image_list, label_list, pred_list = [], [], []
+    for val_img_path, val_lbl_path in zip([val_image_path], [val_label_path]):  # 可扩展为多个验证样本
+        val_image = sitk.GetArrayFromImage(sitk.ReadImage(val_img_path)).astype(np.float32)
+        val_label = sitk.GetArrayFromImage(sitk.ReadImage(val_lbl_path)).astype(np.int64)
+        val_image = np.clip(val_image, -1000, 1000)
+        val_image = (val_image + 1000) / 2000
+        val_label = np.clip(val_label, 0, NUM_CLASSES - 1)
+        prediction = predict_volume(model, val_image, patch_size=PATCH_SIZE)
+        dices, mean_dice = dice_score(prediction, val_label, num_classes=NUM_CLASSES)
+        ious, mean_iou = iou_score(prediction, val_label, num_classes=NUM_CLASSES)
+        hd95s, mean_hd95 = hd95(prediction, val_label, spacing=(1,1,1), num_classes=NUM_CLASSES)
+        assds, mean_assd = assd(prediction, val_label, spacing=(1,1,1), num_classes=NUM_CLASSES)
+        print(f'Val Dice: {dices}, Mean Dice: {mean_dice:.4f}')
+        print(f'IoU: {ious}, Mean IoU: {mean_iou:.4f}')
+        print(f'HD95: {hd95s}, Mean HD95: {mean_hd95:.4f}')
+        print(f'ASSD: {assds}, Mean ASSD: {mean_assd:.4f}')
+        all_dices.append(mean_dice)
+        all_ious.append(mean_iou)
+        all_hd95s.append(mean_hd95)
+        all_assds.append(mean_assd)
+        # 可视化单个切片
+        plot_slice(val_image, val_label, prediction, num_classes=NUM_CLASSES)
+        # 可视化三视图
+        plot_three_views(val_image, val_label, prediction, num_classes=NUM_CLASSES)
+        # 收集用于九宫格
+        image_list.append(val_image)
+        label_list.append(val_label)
+        pred_list.append(prediction)
+    print(f'验证集平均Dice: {np.nanmean(all_dices):.4f}, 平均IoU: {np.nanmean(all_ious):.4f}, 平均HD95: {np.nanmean(all_hd95s):.4f}, 平均ASSD: {np.nanmean(all_assds):.4f}')
+    # 九宫格可视化（如果有3个样本）
+    if len(image_list) == 3:
+        plot_multi_sample_three_views(image_list, label_list, pred_list, num_classes=NUM_CLASSES)
 
 # Split your data into training and validation sets
 all_image_files = sorted(os.listdir(images_path))
@@ -679,75 +717,39 @@ train_model(model, train_loader, val_image_path, val_label_path,
            criterion, optimizer, NUM_EPOCHS, device, monitor, resume_from=None)
 
 # Prediction and Visualization after training
-def visualize_single_slice(image_path, label_path, model_path, save_dir, slice_idx=None):
-    """
-    可视化单个切片的对比图：原始图像、真实标签、预测结果
-    Args:
-        image_path: CT图像路径
-        label_path: 标签图像路径
-        model_path: 模型路径
-        save_dir: 保存目录
-        slice_idx: 指定切片索引，如果为None则使用中间切片
-    """
-    # 加载图像和标签
+def visualize_single_slice(image_path, label_path, model_path, save_dir, num_classes, slice_idx=None):
+    import torch
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     image = sitk.GetArrayFromImage(sitk.ReadImage(image_path)).astype(np.float32)
     label = sitk.GetArrayFromImage(sitk.ReadImage(label_path)).astype(np.int64)
-    
-    # 预处理图像
     image_normalized = np.clip(image, -1000, 1000)
     image_normalized = (image_normalized + 1000) / 2000
-    
-    # 加载模型和预测
-    checkpoint = torch.load(model_path, weights_only=False)
+    model = UNet3D(in_channels=1, out_channels=num_classes).to(device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
-    prediction = predict_volume(model, image_normalized)
-    
-    # 选择切片
+    prediction = predict_volume(model, image_normalized, device=device)
     if slice_idx is None:
         slice_idx = image.shape[0] // 2
-    
-    # 创建图像
     plt.figure(figsize=(15, 5))
-    
-    # 原始CT图像
     plt.subplot(131)
     plt.imshow(image[slice_idx], cmap='gray')
     plt.title('Original CT')
     plt.axis('off')
-    
-    # 真实标签
     plt.subplot(132)
-    plt.imshow(label[slice_idx], cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+    plt.imshow(label[slice_idx], cmap='tab20', vmin=0, vmax=num_classes-1)
     plt.title('Ground Truth')
     plt.axis('off')
-    
-    # 预测结果
     plt.subplot(133)
-    plt.imshow(prediction[slice_idx], cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+    plt.imshow(prediction[slice_idx], cmap='tab20', vmin=0, vmax=num_classes-1)
     plt.title('Prediction')
     plt.axis('off')
-    
-    # 添加颜色条
-    plt.colorbar(plt.cm.ScalarMappable(cmap='tab20', 
-                                      norm=plt.Normalize(vmin=0, vmax=NUM_CLASSES-1)),
-                 ax=plt.gca())
-    
-    # 保存图像
+    plt.colorbar(plt.cm.ScalarMappable(cmap='tab20', norm=plt.Normalize(vmin=0, vmax=num_classes-1)), ax=plt.gca())
     save_path = os.path.join(save_dir, f'slice_{slice_idx}_comparison.png')
     plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.close()
-    
     print(f"Comparison saved to: {save_path}")
     return slice_idx
-
-# 使用函数
-slice_idx = visualize_single_slice(
-    image_path=val_image_path,
-    label_path=val_label_path,
-    model_path=best_model_loss_path,  # 或者使用 best_model_dice_path
-    save_dir=os.path.join(PATHS['results'], 'predictions')
-)
 
 def calculate_class_weights(dataset):
     """计算每个类别的权重"""
@@ -763,32 +765,23 @@ def calculate_class_weights(dataset):
     class_weights[0] *= 0.5
     return class_weights.to(device)
 
-def visualize_comparison_three_views(image_path, label_path, model_path, save_dir):
-    """显示三个视角的对比图"""
-    # 加载数据
+def visualize_comparison_three_views(image_path, label_path, model_path, save_dir, num_classes):
+    import torch
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     image = sitk.GetArrayFromImage(sitk.ReadImage(image_path)).astype(np.float32)
     label = sitk.GetArrayFromImage(sitk.ReadImage(label_path)).astype(np.int64)
-    
-    # 预处理
     image_normalized = np.clip(image, -1000, 1000)
     image_normalized = (image_normalized + 1000) / 2000
-    
-    # 加载模型和预测
-    checkpoint = torch.load(model_path, weights_only=False)
+    model = UNet3D(in_channels=1, out_channels=num_classes).to(device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
-    prediction = predict_volume(model, image_normalized)
-    
-    # 获取中间切片索引
+    prediction = predict_volume(model, image_normalized, device=device)
     D, H, W = image.shape
     mid_d, mid_h, mid_w = D//2, H//2, W//2
-    
-    # 创建三行三列的图像布局
     fig, axes = plt.subplots(3, 3, figsize=(15, 15))
     views = ['Axial', 'Coronal', 'Sagittal']
-    
     for i, (view, slice_idx) in enumerate(zip(views, [mid_d, mid_h, mid_w])):
-        # 原始图像
         if view == 'Axial':
             img_slice = image[slice_idx]
             lbl_slice = label[slice_idx]
@@ -797,79 +790,56 @@ def visualize_comparison_three_views(image_path, label_path, model_path, save_di
             img_slice = image[:, slice_idx, :]
             lbl_slice = label[:, slice_idx, :]
             pred_slice = prediction[:, slice_idx, :]
-        else:  # Sagittal
+        else:
             img_slice = image[:, :, slice_idx]
             lbl_slice = label[:, :, slice_idx]
             pred_slice = prediction[:, :, slice_idx]
-            
-        # 显示原始图像
         axes[i, 0].imshow(img_slice, cmap='gray')
         axes[i, 0].set_title(f'{view} View - Original')
         axes[i, 0].axis('off')
-        
-        # 显示真实标签
-        axes[i, 1].imshow(lbl_slice, cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+        axes[i, 1].imshow(lbl_slice, cmap='tab20', vmin=0, vmax=num_classes-1)
         axes[i, 1].set_title(f'{view} View - Ground Truth')
         axes[i, 1].axis('off')
-        
-        # 显示预测结果
-        axes[i, 2].imshow(pred_slice, cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+        axes[i, 2].imshow(pred_slice, cmap='tab20', vmin=0, vmax=num_classes-1)
         axes[i, 2].set_title(f'{view} View - Prediction')
         axes[i, 2].axis('off')
-    
     plt.tight_layout()
     save_path = os.path.join(save_dir, f'three_views_comparison.png')
     plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.close()
-    
     print(f"Comparison saved to: {save_path}")
 
-def visualize_three_views_prediction(image_path, model_path, save_dir, title=None):
-    """
-    展示三视图（Sagittal, Coronal, Axial）的预测结果。
-    Args:
-        image_path: CT图像路径
-        model_path: 模型权重路径
-        save_dir: 保存目录
-        title: 图像标题
-    """
+def visualize_three_views_prediction(image_path, model_path, save_dir, num_classes, title=None):
+    import torch
     import os
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     image = sitk.GetArrayFromImage(sitk.ReadImage(image_path)).astype(np.float32)
     image_normalized = np.clip(image, -1000, 1000)
     image_normalized = (image_normalized + 1000) / 2000
-
-    checkpoint = torch.load(model_path, weights_only=False)
+    model = UNet3D(in_channels=1, out_channels=num_classes).to(device)
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
-    prediction = predict_volume(model, image_normalized)
-
+    prediction = predict_volume(model, image_normalized, device=device)
     D, H, W = prediction.shape
     mid_d, mid_h, mid_w = D // 2, H // 2, W // 2
-
     plt.figure(figsize=(18, 6))
     if title is not None:
         plt.suptitle(title, fontsize=16)
     else:
         plt.suptitle(f"Prediction using {os.path.basename(model_path)}", fontsize=16)
-
-    # Sagittal
     plt.subplot(1, 3, 1)
-    plt.imshow(prediction[:, :, mid_w], cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+    plt.imshow(prediction[:, :, mid_w], cmap='tab20', vmin=0, vmax=num_classes-1)
     plt.title('Sagittal View')
     plt.axis('off')
-
-    # Coronal
     plt.subplot(1, 3, 2)
-    plt.imshow(prediction[:, mid_h, :], cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+    plt.imshow(prediction[:, mid_h, :], cmap='tab20', vmin=0, vmax=num_classes-1)
     plt.title('Coronal View')
     plt.axis('off')
-
-    # Axial
     plt.subplot(1, 3, 3)
-    plt.imshow(prediction[mid_d, :, :], cmap='tab20', vmin=0, vmax=NUM_CLASSES-1)
+    plt.imshow(prediction[mid_d, :, :], cmap='tab20', vmin=0, vmax=num_classes-1)
     plt.title('Axial View')
     plt.axis('off')
-
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, f'three_views_prediction.png')
@@ -878,10 +848,197 @@ def visualize_three_views_prediction(image_path, model_path, save_dir, title=Non
     print(f"Three-view prediction saved to: {save_path}")
     return save_path
 
-# 在训练结束后添加三视图预测展示
-visualize_three_views_prediction(
-    image_path=val_image_path,
-    model_path=best_model_dice_path,  # 或者best_model_loss_path
-    save_dir=os.path.join(PATHS['results'], 'predictions'),
-    title=None
-)
+
+# ========== 评估与可视化函数 ==========
+def dice_score(pred, gt, num_classes):
+    """多类别Dice，返回每个类别和平均Dice"""
+    dices = []
+    for c in range(1, num_classes):  # 跳过背景
+        pred_c = (pred == c)
+        gt_c = (gt == c)
+        intersection = np.sum(pred_c & gt_c)
+        denom = np.sum(pred_c) + np.sum(gt_c)
+        dice = (2. * intersection) / (denom + 1e-7) if denom > 0 else np.nan
+        dices.append(dice)
+    return dices, np.nanmean(dices)
+
+def iou_score(pred, gt, num_classes):
+    """多类别IoU，返回每个类别和平均IoU"""
+    ious = []
+    for c in range(1, num_classes):
+        pred_c = (pred == c)
+        gt_c = (gt == c)
+        intersection = np.sum(pred_c & gt_c)
+        union = np.sum(pred_c | gt_c)
+        iou = intersection / (union + 1e-7) if union > 0 else np.nan
+        ious.append(iou)
+    return ious, np.nanmean(ious)
+
+def hd95(pred, gt, spacing=(1,1,1), num_classes=4):
+    """多类别HD95，返回每个类别和平均HD95"""
+    try:
+        from medpy.metric.binary import hd95 as medpy_hd95
+    except ImportError:
+        print('请先pip install medpy')
+        return [np.nan]*num_classes, np.nan
+    hd95s = []
+    for c in range(1, num_classes):
+        pred_c = (pred == c)
+        gt_c = (gt == c)
+        if np.sum(pred_c) == 0 or np.sum(gt_c) == 0:
+            hd95s.append(np.nan)
+        else:
+            try:
+                hd = medpy_hd95(pred_c, gt_c, voxelspacing=spacing)
+            except Exception:
+                hd = np.nan
+            hd95s.append(hd)
+    return hd95s, np.nanmean(hd95s)
+
+def assd(pred, gt, spacing=(1,1,1), num_classes=4):
+    """多类别ASSD，返回每个类别和平均ASSD"""
+    try:
+        from medpy.metric.binary import assd as medpy_assd
+    except ImportError:
+        print('请先pip install medpy')
+        return [np.nan]*num_classes, np.nan
+    assds = []
+    for c in range(1, num_classes):
+        pred_c = (pred == c)
+        gt_c = (gt == c)
+        if np.sum(pred_c) == 0 or np.sum(gt_c) == 0:
+            assds.append(np.nan)
+        else:
+            try:
+                a = medpy_assd(pred_c, gt_c, voxelspacing=spacing)
+            except Exception:
+                a = np.nan
+            assds.append(a)
+    return assds, np.nanmean(assds)
+
+def plot_slice(image, label, pred, slice_idx=None, num_classes=4, save_path=None):
+    """可视化单个切片的原图、标签、预测"""
+    if slice_idx is None:
+        slice_idx = image.shape[0] // 2
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(15,5))
+    plt.subplot(1,3,1)
+    plt.imshow(image[slice_idx], cmap='gray')
+    plt.title('CT')
+    plt.axis('off')
+    plt.subplot(1,3,2)
+    plt.imshow(label[slice_idx], cmap='tab20', vmin=0, vmax=num_classes-1)
+    plt.title('Label')
+    plt.axis('off')
+    plt.subplot(1,3,3)
+    plt.imshow(pred[slice_idx], cmap='tab20', vmin=0, vmax=num_classes-1)
+    plt.title('Prediction')
+    plt.axis('off')
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=200)
+    plt.show()
+
+def plot_three_views(image, label, pred, num_classes=4, save_path=None):
+    """三视图可视化"""
+    import matplotlib.pyplot as plt
+    D, H, W = image.shape
+    mid_d, mid_h, mid_w = D//2, H//2, W//2
+    fig, axes = plt.subplots(3, 3, figsize=(15, 15))
+    views = ['Axial', 'Coronal', 'Sagittal']
+    for i, (view, idx) in enumerate(zip(views, [mid_d, mid_h, mid_w])):
+        if view == 'Axial':
+            img_slice = image[idx]
+            lbl_slice = label[idx]
+            pred_slice = pred[idx]
+        elif view == 'Coronal':
+            img_slice = image[:, idx, :]
+            lbl_slice = label[:, idx, :]
+            pred_slice = pred[:, idx, :]
+        else:
+            img_slice = image[:, :, idx]
+            lbl_slice = label[:, :, idx]
+            pred_slice = pred[:, :, idx]
+        axes[i, 0].imshow(img_slice, cmap='gray')
+        axes[i, 0].set_title(f'{view} - CT')
+        axes[i, 0].axis('off')
+        axes[i, 1].imshow(lbl_slice, cmap='tab20', vmin=0, vmax=num_classes-1)
+        axes[i, 1].set_title(f'{view} - Label')
+        axes[i, 1].axis('off')
+        axes[i, 2].imshow(pred_slice, cmap='tab20', vmin=0, vmax=num_classes-1)
+        axes[i, 2].set_title(f'{view} - Prediction')
+        axes[i, 2].axis('off')
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=200)
+    plt.show()
+
+def plot_multi_sample_three_views(
+    image_list, label_list, pred_list, num_classes=4, save_path=None, sample_titles=None
+):
+    """
+    九宫格：三样本三视图可视化，颜色鲜明，背景黑色
+    image_list, label_list, pred_list: list of 3D numpy arrays
+    """
+    import matplotlib.pyplot as plt
+    plt.style.use('dark_background')
+    n_samples = len(image_list)
+    assert n_samples == 3, "只支持3个样本"
+    fig, axes = plt.subplots(n_samples, 3, figsize=(15, 15))
+    views = ['Axial', 'Coronal', 'Sagittal']
+    for i in range(n_samples):
+        image, label, pred = image_list[i], label_list[i], pred_list[i]
+        D, H, W = image.shape
+        mid_d, mid_h, mid_w = D//2, H//2, W//2
+        slices = [
+            (image[mid_d], label[mid_d], pred[mid_d]),         # Axial
+            (image[:, mid_h, :], label[:, mid_h, :], pred[:, mid_h, :]), # Coronal
+            (image[:, :, mid_w], label[:, :, mid_w], pred[:, :, mid_w])  # Sagittal
+        ]
+        for j, (img_slice, lbl_slice, pred_slice) in enumerate(slices):
+            ax = axes[i, j]
+            ax.imshow(img_slice, cmap='gray')
+            ax.imshow(pred_slice, cmap='nipy_spectral', vmin=0, vmax=num_classes-1, alpha=0.5)
+            ax.set_axis_off()
+            if i == 0:
+                ax.set_title(views[j], fontsize=16)
+            if j == 0 and sample_titles:
+                ax.set_ylabel(sample_titles[i], fontsize=16)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300, facecolor='black')
+    plt.show()
+
+# 训练和评估结束后，分别对两个模型做可视化
+model_paths = [best_model_dice_path, best_model_loss_path]
+model_names = ['best_dice', 'best_loss']
+
+for model_path, model_name in zip(model_paths, model_names):
+    model_save_dir = os.path.join(PATHS['results'], 'predictions', model_name)
+    os.makedirs(model_save_dir, exist_ok=True)
+    # 单切片对比
+    visualize_single_slice(
+        image_path=val_image_path,
+        label_path=val_label_path,
+        model_path=model_path,
+        save_dir=model_save_dir,
+        num_classes=NUM_CLASSES,
+        slice_idx=None
+    )
+    # 三视图对比
+    visualize_comparison_three_views(
+        image_path=val_image_path,
+        label_path=val_label_path,
+        model_path=model_path,
+        save_dir=model_save_dir,
+        num_classes=NUM_CLASSES
+    )
+    # 三视图预测
+    visualize_three_views_prediction(
+        image_path=val_image_path,
+        model_path=model_path,
+        save_dir=model_save_dir,
+        num_classes=NUM_CLASSES,
+        title=f"Prediction ({model_name})"
+    )
+

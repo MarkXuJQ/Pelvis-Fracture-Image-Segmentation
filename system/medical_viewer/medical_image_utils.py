@@ -11,7 +11,6 @@ import vtk
 from vtk.util import numpy_support
 import traceback
 
-
 # 添加项目根目录到 Python 路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,6 +18,7 @@ from medical_viewer.segmenters.medsam_segmenter import MedSAMSegmenter
 from medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
 from medical_viewer.segmenters.unet_3d_segmenter import UNet3DSegmenter  # 确保路径一致
 from medical_viewer.segmenters.myunet3d_segmenter import MyUNet3DSegmenter
+from medical_viewer.segmenters.stage_first_segmenter import Stage1PelvisSegmenter
 
 class MedicalImageProcessor:
     """医学图像处理类，提供加载、显示和基础处理功能"""
@@ -370,6 +370,9 @@ class MedicalImageProcessor:
         elif model_name == 'myunet3d':
             self.segmenter = MyUNet3DSegmenter(weights_path=kwargs.get('checkpoint_path'), device=kwargs.get('device', 'cuda'))
             print("已创建自定义U-Net3D分割器")
+        elif model_name == 'stage1_pelvis':
+            self.segmenter = Stage1PelvisSegmenter()
+            print("已创建Stage1PelvisSegmenter分割器")
         else:
             raise ValueError(f"不支持的模型: {model_name}")
 
@@ -507,6 +510,28 @@ class MedicalImageProcessor:
     def is_3d_layout_model(self, model_name):
         return model_name in ['unet3d', 'myunet3d']
 
+    def segment_pelvis_stage1(self):
+        """
+        使用第一阶段骨盆分割模型进行分割，返回四项输出，适配3D体积
+        """
+        if self.image_data is None:
+            print("错误: 未加载图像")
+            return None
+        if not self.is_3d:
+            print("错误: 该模型仅支持3D体积")
+            return None
+        segmenter = Stage1PelvisSegmenter()
+        mask = segmenter.segment(self.image_data)  # mask: (D, H, W)
+        prob_map = segmenter.get_probability_map(self.image_data)  # (D, H, W) or (D, H, W, C)
+        colored = segmenter.get_colored_segmentation(mask)  # (D, H, W, 3)
+        legend = segmenter.get_color_legend()
+        return {
+            'mask': mask,
+            'probability_map': prob_map,
+            'colored_segmentation': colored,
+            'color_legend': legend
+        }
+
 def list_available_models() -> dict:
     """
     列出系统中可用的分割模型
@@ -523,9 +548,9 @@ def list_available_models() -> dict:
         },
         'deeplabv3': {
             'description': 'DeepLabV3 模型 (医学图像分割)',
-            'weights_path': 'weights/DeeplabV3/complete_deeplabv3_model.pt',  # 更新为新的权重文件路径
+            'weights_path': 'weights/DeeplabV3/complete_deeplabv3_model.pt',
             'class': DeeplabV3Segmenter,
-            'is_3d_capable': False  # 明确标记不支持3D
+            'is_3d_capable': False
         },
         'unet3d': {
             'description': '3D U-Net (适用于CT/MRI体积分割)',
@@ -537,6 +562,12 @@ def list_available_models() -> dict:
             'description': '自定义U-Net3D骨盆分割',
             'weights_path': 'weights/MyUnet3D/best_model_loss.pth',
             'class': MyUNet3DSegmenter,
+            'is_3d_capable': True
+        },
+        'stage1_pelvis': {
+            'description': '骨盆分割（第一阶段，四类）',
+            'weights_path': 'weights/stage3/best_pelvis_model.pth',
+            'class': Stage1PelvisSegmenter,
             'is_3d_capable': True
         }
     }

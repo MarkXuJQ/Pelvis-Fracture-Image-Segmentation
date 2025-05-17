@@ -929,29 +929,8 @@ class MedicalImageApp(QMainWindow):
             return
         is_3d = getattr(self.processor, 'is_3d', False)
         selected_model = self.model_selector.currentText().split(':')[0] if hasattr(self, 'model_selector') else ''
-        if self.is_2d_layout_model(selected_model):
-            # 2D布局
-            self.original_group.setVisible(True)
-            self.result_group.setVisible(True)
-            self.merged_group.setVisible(False)
-            self.show_original_btn.setVisible(False)
-            # 获取当前切片
-            img = self.processor.image_data
-            if getattr(self.processor, 'is_3d', False):
-                if self.current_view == 'axial':
-                    img = self.processor.image_data[self.axial_slice]
-                elif self.current_view == 'coronal':
-                    img = self.processor.image_data[:, self.coronal_slice, :]
-                    img = np.rot90(img, k=2)
-                elif self.current_view == 'sagittal':
-                    img = self.processor.image_data[:, :, self.sagittal_slice]
-                    img = np.rot90(img, k=2)
-            self.original_view.display_image(img)
-            self.original_view.set_circles(self.points, self.point_labels)
-            self.draw_boxes()
-            self.display_result(img)
-        elif self.is_3d_layout_model(selected_model):
-            # 3D田字格布局
+        # 只要是3D模型且数据为3D，显示三视图，其余全部2D布局
+        if is_3d and self.is_3d_layout_model(selected_model):
             self.original_group.setVisible(False)
             self.result_group.setVisible(False)
             self.merged_group.setVisible(True)
@@ -974,10 +953,7 @@ class MedicalImageApp(QMainWindow):
             # 轴状
             self.axial_ax.clear()
             if show_original:
-                if len(axial_img.shape) == 3:
-                    self.axial_ax.imshow(axial_img)
-                else:
-                    self.axial_ax.imshow(axial_img, cmap='gray')
+                self.axial_ax.imshow(axial_img, cmap='gray')
             else:
                 self._draw_segmentation_on_ax(self.axial_ax, axial_img, view='axial')
             self.axial_ax.axis('off')
@@ -985,10 +961,7 @@ class MedicalImageApp(QMainWindow):
             # 冠状
             self.coronal_ax.clear()
             if show_original:
-                if len(coronal_img.shape) == 3:
-                    self.coronal_ax.imshow(coronal_img)
-                else:
-                    self.coronal_ax.imshow(coronal_img, cmap='gray')
+                self.coronal_ax.imshow(coronal_img, cmap='gray')
             else:
                 self._draw_segmentation_on_ax(self.coronal_ax, coronal_img, view='coronal')
             self.coronal_ax.axis('off')
@@ -996,26 +969,31 @@ class MedicalImageApp(QMainWindow):
             # 矢状
             self.sagittal_ax.clear()
             if show_original:
-                if len(sagittal_img.shape) == 3:
-                    self.sagittal_ax.imshow(sagittal_img)
-                else:
-                    self.sagittal_ax.imshow(sagittal_img, cmap='gray')
+                self.sagittal_ax.imshow(sagittal_img, cmap='gray')
             else:
                 self._draw_segmentation_on_ax(self.sagittal_ax, sagittal_img, view='sagittal')
             self.sagittal_ax.axis('off')
             self.sagittal_canvas.draw()
-            # 右下角3D模型占位暂不变
-        else:
-            # 默认2D布局
-            self.original_group.setVisible(True)
-            self.result_group.setVisible(True)
-            self.merged_group.setVisible(False)
-            self.show_original_btn.setVisible(False)
-            img = self.processor.image_data
-            self.original_view.display_image(img)
-            self.original_view.set_circles(self.points, self.point_labels)
-            self.draw_boxes()
-            self.display_result(img)
+            return
+        # 其余情况全部2D布局
+        self.original_group.setVisible(True)
+        self.result_group.setVisible(True)
+        self.merged_group.setVisible(False)
+        self.show_original_btn.setVisible(False)
+        img = self.processor.image_data
+        if is_3d:
+            if self.current_view == 'axial':
+                img = self.processor.image_data[self.axial_slice]
+            elif self.current_view == 'coronal':
+                img = self.processor.image_data[:, self.coronal_slice, :]
+                img = np.rot90(img, k=2)
+            elif self.current_view == 'sagittal':
+                img = self.processor.image_data[:, :, self.sagittal_slice]
+                img = np.rot90(img, k=2)
+        self.original_view.display_image(img)
+        self.original_view.set_circles(self.points, self.point_labels)
+        self.draw_boxes()
+        self.display_result(img)
 
     def display_result(self, current_slice):
         """显示分割结果"""
@@ -1776,6 +1754,35 @@ class MedicalImageApp(QMainWindow):
                     QMessageBox.critical(self, "错误", f"MyUNet3D分割出错: {str(e)}")
                     traceback.print_exc()
 
+            # ===== Stage1Pelvis 分割路径 =====
+            elif selected_model == 'stage1_pelvis':
+                print("使用Stage1PelvisSegmenter进行分割")
+                if not self.processor.is_3d:
+                    QMessageBox.warning(self, "提示", "Stage1Pelvis模型需要3D体积数据")
+                    return
+                try:
+                    result = self.processor.segment_pelvis_stage1()
+                    if result is not None:
+                        self.mask = result['mask']  # (D, H, W)
+                        self.colored_mask = result['colored_segmentation']  # (D, H, W, 3)
+                        self.region_colors = result['color_legend']
+                        # 默认显示当前切片
+                        if self.current_view == 'axial':
+                            mask_slice = self.mask[self.axial_slice]
+                        elif self.current_view == 'coronal':
+                            mask_slice = self.mask[:, self.coronal_slice, :]
+                            mask_slice = np.rot90(mask_slice, k=2)
+                        elif self.current_view == 'sagittal':
+                            mask_slice = self.mask[:, :, self.sagittal_slice]
+                            mask_slice = np.rot90(mask_slice, k=2)
+                        self.box_masks = [mask_slice]
+                        self.view_3d_btn.setEnabled(True)
+                    else:
+                        print("Stage1Pelvis分割失败，返回了空掩码")
+                        QMessageBox.warning(self, "警告", "分割失败，返回了空掩码")
+                except Exception as e:
+                    QMessageBox.critical(self, "错误", f"Stage1Pelvis分割出错: {str(e)}")
+                    traceback.print_exc()
 
             # 更新显示
             self.update_display()
@@ -1788,13 +1795,10 @@ class MedicalImageApp(QMainWindow):
         except Exception as e:
             print(f"分割时出错: {str(e)}")
             traceback.print_exc()
-
             QMessageBox.critical(self, "错误", f"分割时出错: {str(e)}")
         finally:
-            # 确保在任何情况下都关闭进度对话框
             if progress_dialog and progress_dialog.isVisible():
                 progress_dialog.close()
-    
 
     def save_result(self):
         """保存分割结果"""
@@ -1851,7 +1855,7 @@ class MedicalImageApp(QMainWindow):
         model_name = model_name.split(':')[0]  # 获取模型ID
         if model_name == 'deeplabv3':
             return False  # DeepLabV3 只支持 2D 切片分割
-        elif model_name in ['unet3d', 'myunet3d']:
+        elif model_name in ['unet3d', 'myunet3d', 'stage1_pelvis']:
             return True  # 这些模型支持 3D 分割
         return False  # 默认不支持
 
@@ -2065,7 +2069,7 @@ class MedicalImageApp(QMainWindow):
         return model_name in ['medsam', 'deeplabv3']
 
     def is_3d_layout_model(self, model_name):
-        return model_name in ['unet3d', 'myunet3d']
+        return model_name in ['unet3d', 'myunet3d', 'stage1_pelvis']
 
 
 class Embedded3DViewer(QWidget):
@@ -2112,23 +2116,62 @@ class Embedded3DViewer(QWidget):
         verts, faces, _, _ = measure.marching_cubes(volume, level=threshold)
         self._add_mesh_to_renderer(verts, faces, color=(1,1,0.8))
 
+    @staticmethod
+    def filter_largest_components(mask, n=1, min_size=5000):
+        # mask: 3D标签图像
+        # n: 保留最大的n个连通域
+        # min_size: 体素数小于该值的连通域直接去除
+        from scipy.ndimage import label
+        filtered = np.zeros_like(mask)
+        structure = np.ones((3,3,3), dtype=np.uint8)
+        for label_val in np.unique(mask):
+            if label_val == 0:
+                continue
+            binary = (mask == label_val)
+            labeled, num = label(binary, structure=structure)
+            sizes = [(i, np.sum(labeled == i)) for i in range(1, num+1)]
+            sizes = [x for x in sizes if x[1] >= min_size]
+            sizes = sorted(sizes, key=lambda x: -x[1])[:n]
+            for i, _ in sizes:
+                filtered[(labeled == i)] = label_val
+        return filtered
+
     def show_segmentation_3d(self, mask):
-        # 连通域分析，按主标签分配医学颜色
+        # 先去除噪声：每个标签只保留最大连通域且体素数大于5000
+        mask = self.filter_largest_components(mask, n=1, min_size=5000)
+        # 判断是否为stage1_pelvis分割（标签为1/2/3）
+        unique_labels = np.unique(mask)
+        if set(unique_labels).issubset({0, 1, 2, 3}):
+            # 直接按标签渲染
+            label_colors = {
+                1: (1, 0, 0),   # 红色 骶骨
+                2: (0, 1, 0),   # 绿色 左髋骨
+                3: (0, 0, 1),   # 蓝色 右髋骨
+            }
+            for label, color in label_colors.items():
+                region = (mask == label)
+                if np.sum(region) < 100:
+                    continue
+                try:
+                    verts, faces, _, _ = measure.marching_cubes(region.astype(np.uint8), level=0.5)
+                    self._add_mesh_to_renderer(verts, faces, color=color)
+                except Exception as e:
+                    print(f"marching_cubes failed for label {label}: {e}")
+                    continue
+            return
+        # 否则，保留原有UNet3D分割的分区渲染逻辑
         labeled, num = ndimage.label(mask > 0)
         if num == 0:
             return
-        # 统计每个连通域的体素数，按体素数降序排列
         labels, counts = np.unique(labeled, return_counts=True)
         label_count_pairs = [(l, c) for l, c in zip(labels, counts) if l != 0]
-        label_count_pairs = sorted(label_count_pairs, key=lambda x: -x[1])[:10]
+        label_count_pairs = sorted(label_count_pairs, key=lambda x: -x[1])[:1]  # 只取前1大连通域
         for i, (label, count) in enumerate(label_count_pairs):
             if count < 100:
                 continue
             region = (labeled == label)
-            # 统计该连通域内的主标签
             region_labels, region_counts = np.unique(mask[region], return_counts=True)
             main_label = region_labels[np.argmax(region_counts)]
-            # 根据主标签分配颜色
             if 1 <= main_label <= 10:
                 color = (1, 0, 0)  # 红色，骶骨
             elif 11 <= main_label <= 20:

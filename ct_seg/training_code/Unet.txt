@@ -1,0 +1,322 @@
+模型结构如下:
+UNet3D(
+  (encoder1): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(1, 1, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
+      (pointwise): Conv3d(1, 64, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(64, 64, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=64)
+      (pointwise): Conv3d(64, 64, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=64, out_features=4, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=4, out_features=64, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (encoder2): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(64, 64, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=64)
+      (pointwise): Conv3d(64, 128, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(128, 128, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=128)
+      (pointwise): Conv3d(128, 128, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=128, out_features=8, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=8, out_features=128, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (encoder3): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(128, 128, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=128)
+      (pointwise): Conv3d(128, 256, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(256, 256, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=256)
+      (pointwise): Conv3d(256, 256, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=256, out_features=16, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=16, out_features=256, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (encoder4): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(256, 256, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=256)
+      (pointwise): Conv3d(256, 512, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(512, 512, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=512)
+      (pointwise): Conv3d(512, 512, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=512, out_features=32, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=32, out_features=512, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (attention1): AttentionGate(
+    (W_g): Sequential(
+      (0): Conv3d(512, 256, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (W_x): Sequential(
+      (0): Conv3d(512, 256, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (psi): Sequential(
+      (0): Conv3d(256, 1, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(1, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (2): Sigmoid()
+    )
+    (relu): ReLU(inplace=True)
+  )
+  (attention2): AttentionGate(
+    (W_g): Sequential(
+      (0): Conv3d(256, 128, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (W_x): Sequential(
+      (0): Conv3d(256, 128, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (psi): Sequential(
+      (0): Conv3d(128, 1, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(1, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (2): Sigmoid()
+    )
+    (relu): ReLU(inplace=True)
+  )
+  (attention3): AttentionGate(
+    (W_g): Sequential(
+      (0): Conv3d(128, 64, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (W_x): Sequential(
+      (0): Conv3d(128, 64, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (psi): Sequential(
+      (0): Conv3d(64, 1, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(1, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (2): Sigmoid()
+    )
+    (relu): ReLU(inplace=True)
+  )
+  (attention4): AttentionGate(
+    (W_g): Sequential(
+      (0): Conv3d(64, 32, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (W_x): Sequential(
+      (0): Conv3d(64, 32, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (psi): Sequential(
+      (0): Conv3d(32, 1, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (1): BatchNorm3d(1, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (2): Sigmoid()
+    )
+    (relu): ReLU(inplace=True)
+  )
+  (pool): MaxPool3d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+  (bottleneck): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(512, 512, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=512)
+      (pointwise): Conv3d(512, 1024, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(1024, 1024, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=1024)
+      (pointwise): Conv3d(1024, 1024, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=1024, out_features=64, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=64, out_features=1024, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (upconv4): ConvTranspose3d(1024, 512, kernel_size=(2, 2, 2), stride=(2, 2, 2))
+  (decoder4): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(1024, 1024, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=1024)
+      (pointwise): Conv3d(1024, 512, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(512, 512, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=512)
+      (pointwise): Conv3d(512, 512, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=512, out_features=32, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=32, out_features=512, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (upconv3): ConvTranspose3d(512, 256, kernel_size=(2, 2, 2), stride=(2, 2, 2))
+  (decoder3): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(512, 512, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=512)
+      (pointwise): Conv3d(512, 256, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(256, 256, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=256)
+      (pointwise): Conv3d(256, 256, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=256, out_features=16, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=16, out_features=256, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (upconv2): ConvTranspose3d(256, 128, kernel_size=(2, 2, 2), stride=(2, 2, 2))
+  (decoder2): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(256, 256, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=256)
+      (pointwise): Conv3d(256, 128, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(128, 128, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=128)
+      (pointwise): Conv3d(128, 128, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=128, out_features=8, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=8, out_features=128, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (upconv1): ConvTranspose3d(128, 64, kernel_size=(2, 2, 2), stride=(2, 2, 2))
+  (decoder1): Sequential(
+    (0): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(128, 128, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=128)
+      (pointwise): Conv3d(128, 64, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (1): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU(inplace=True)
+    (3): DepthwiseSeparableConv3d(
+      (depthwise): Conv3d(64, 64, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1), groups=64)
+      (pointwise): Conv3d(64, 64, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+      (bn): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (relu): ReLU(inplace=True)
+    )
+    (4): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (5): ReLU(inplace=True)
+    (6): SEBlock(
+      (avg_pool): AdaptiveAvgPool3d(output_size=1)
+      (fc): Sequential(
+        (0): Linear(in_features=64, out_features=4, bias=False)
+        (1): ReLU(inplace=True)
+        (2): Linear(in_features=4, out_features=64, bias=False)
+        (3): Sigmoid()
+      )
+    )
+  )
+  (output): Sequential(
+    (0): Conv3d(64, 4, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+    (1): BatchNorm3d(4, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+  )
+  (dropout): Dropout3d(p=0.3, inplace=False)
+)
+
+
