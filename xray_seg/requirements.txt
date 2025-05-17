@@ -1,4 +1,0 @@
-numpy
-seaborn
-opencv-python
-albumentations[imgaug]

@@ -30,7 +30,7 @@ ct_seg/
 │   └── roi_cache/        # 感兴趣区域缓存
 │
 ├── training_code/        # 训练和推理相关的主要代码
-│   ├── train_pelvis_pipeline.py   # 主训练脚本
+│   ├── train_pelvis_pipeline.py   # 本地三阶段训练脚本
 │   ├── colab_3stage_pipeline.ipynb/py # Colab三阶段训练notebook/脚本
 │   ├── Unet_colab.py/ipynb        # U-Net模型定义与训练
 │   ├── Deeplab.ipynb              # 其他模型实验
