@@ -19,6 +19,7 @@ from medical_viewer.segmenters.deeplab_segmenter import DeeplabV3Segmenter
 from medical_viewer.segmenters.unet_3d_segmenter import UNet3DSegmenter  # 确保路径一致
 from medical_viewer.segmenters.myunet3d_segmenter import MyUNet3DSegmenter
 from medical_viewer.segmenters.stage_first_segmenter import Stage1PelvisSegmenter
+from medical_viewer.segmenters.xray_unet2d_segmenter import XrayUnet2dSegmenter
 
 class MedicalImageProcessor:
     """医学图像处理类，提供加载、显示和基础处理功能"""
@@ -370,9 +371,13 @@ class MedicalImageProcessor:
         elif model_name == 'myunet3d':
             self.segmenter = MyUNet3DSegmenter(weights_path=kwargs.get('checkpoint_path'), device=kwargs.get('device', 'cuda'))
             print("已创建自定义U-Net3D分割器")
-        elif model_name == 'stage1_pelvis':
+        elif model_name == '3stage_pelvis':
             self.segmenter = Stage1PelvisSegmenter()
-            print("已创建Stage1PelvisSegmenter分割器")
+            print("已创建PelvisSegmenter分割器")
+        elif model_name == 'xray_unet2d':
+            #self.segmenter = XrayUnet2dSegmenter(weights_path=kwargs.get('checkpoint_path'), device=kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
+            self.segmenter = None
+            print("已创建Xray Unet2D分割器")
         else:
             raise ValueError(f"不支持的模型: {model_name}")
 
@@ -564,11 +569,17 @@ def list_available_models() -> dict:
             'class': MyUNet3DSegmenter,
             'is_3d_capable': True
         },
-        'stage1_pelvis': {
-            'description': '骨盆分割（第一阶段，四类）',
+        '3stage_pelvis': {
+            'description': '骨盆分割',
             'weights_path': 'weights/stage3/best_pelvis_model.pth',
             'class': Stage1PelvisSegmenter,
             'is_3d_capable': True
+        },
+        'xray_unet2d': {
+            'description': 'X-ray Unet2D (适用于X光片的2D分割)',
+            'weights_path': 'xray_seg/data/result/best_unet2d_stage1.pth',
+            'class': XrayUnet2dSegmenter,
+            'is_3d_capable': False
         }
     }
     

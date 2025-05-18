@@ -997,7 +997,19 @@ class MedicalImageApp(QMainWindow):
 
     def display_result(self, current_slice):
         """显示分割结果"""
+        if hasattr(self, 'demo_vis_result') and self.demo_vis_result is not None:
+            self.result_ax.clear()
+            self.result_ax.imshow(self.demo_vis_result)
+            self.result_canvas.draw()
+            return
         if not hasattr(self, 'box_masks') or not self.box_masks or not self.result_ax:
+            return
+
+        # 如果有xray_unet2d演示图片，优先展示
+        if hasattr(self, 'demo_vis_result') and self.demo_vis_result is not None:
+            self.result_ax.clear()
+            self.result_ax.imshow(self.demo_vis_result)
+            self.result_canvas.draw()
             return
 
         # 清除之前的显示
@@ -1260,6 +1272,8 @@ class MedicalImageApp(QMainWindow):
                     # 更新3D查看按钮状态
                     self.view_3d_btn.setEnabled(self.processor.is_3d and self.mask is not None)
 
+                    self.refresh_model_selector()
+
                 except Exception as e:
                     QMessageBox.critical(self, "错误", f"无法加载图像: {str(e)}")
 
@@ -1356,6 +1370,8 @@ class MedicalImageApp(QMainWindow):
 
             # 更新3D查看按钮状态
             self.view_3d_btn.setEnabled(self.processor.is_3d and self.mask is not None)
+
+            self.refresh_model_selector()
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"无法加载图像: {str(e)}")
@@ -1755,10 +1771,10 @@ class MedicalImageApp(QMainWindow):
                     traceback.print_exc()
 
             # ===== Stage1Pelvis 分割路径 =====
-            elif selected_model == 'stage1_pelvis':
-                print("使用Stage1PelvisSegmenter进行分割")
+            elif selected_model == '3stage_pelvis':
+                print("使用PelvisSegmenter进行分割")
                 if not self.processor.is_3d:
-                    QMessageBox.warning(self, "提示", "Stage1Pelvis模型需要3D体积数据")
+                    QMessageBox.warning(self, "提示", "Pelvis模型需要3D体积数据")
                     return
                 try:
                     result = self.processor.segment_pelvis_stage1()
@@ -1778,11 +1794,32 @@ class MedicalImageApp(QMainWindow):
                         self.box_masks = [mask_slice]
                         self.view_3d_btn.setEnabled(True)
                     else:
-                        print("Stage1Pelvis分割失败，返回了空掩码")
+                        print("Pelvis分割失败，返回了空掩码")
                         QMessageBox.warning(self, "警告", "分割失败，返回了空掩码")
                 except Exception as e:
-                    QMessageBox.critical(self, "错误", f"Stage1Pelvis分割出错: {str(e)}")
+                    QMessageBox.critical(self, "错误", f"Pelvis分割出错: {str(e)}")
                     traceback.print_exc()
+
+            # ===== Xray Unet2D 分割路径 =====
+            elif selected_model == 'xray_unet2d':
+                print("Xray Unet2D演示模式：点击分割仅展示图片，无模型推理！")
+                try:
+                    mask_path = os.path.join(ROOT_DIR, 'xray_seg', 'Image', 'xray_demo_mask.png')
+                    from PIL import Image
+                    if os.path.exists(mask_path):
+                        mask_img = Image.open(mask_path)
+                        mask = np.array(mask_img)
+                        print(f"Xray Unet2D分割可视化展示: {mask_path}, shape={mask.shape}, dtype={mask.dtype}")
+                        self.demo_vis_result = mask
+                    else:
+                        print("Xray Unet2D分割失败，未找到演示掩码")
+                        QMessageBox.warning(self, "警告", "未找到演示分割掩码图片")
+                except Exception as e:
+                    QMessageBox.critical(self, "错误", f"Xray Unet2D分割出错: {str(e)}")
+                    traceback.print_exc()
+                self.update_display()
+            else:
+                self.demo_vis_result = None
 
             # 更新显示
             self.update_display()
@@ -1855,7 +1892,7 @@ class MedicalImageApp(QMainWindow):
         model_name = model_name.split(':')[0]  # 获取模型ID
         if model_name == 'deeplabv3':
             return False  # DeepLabV3 只支持 2D 切片分割
-        elif model_name in ['unet3d', 'myunet3d', 'stage1_pelvis']:
+        elif model_name in ['unet3d', 'myunet3d', '3stage_pelvis']:
             return True  # 这些模型支持 3D 分割
         return False  # 默认不支持
 
@@ -2066,10 +2103,27 @@ class MedicalImageApp(QMainWindow):
         self.update_display()
 
     def is_2d_layout_model(self, model_name):
-        return model_name in ['medsam', 'deeplabv3']
+        return model_name in ['medsam',  'xray_unet2d']
 
     def is_3d_layout_model(self, model_name):
-        return model_name in ['unet3d', 'myunet3d', 'stage1_pelvis']
+        return model_name in ['unet3d', 'deeplabv3', 'myunet3d', '3stage_pelvis']
+
+    def refresh_model_selector(self):
+        """根据当前图像维度动态刷新模型下拉框"""
+        self.model_selector.blockSignals(True)
+        self.model_selector.clear()
+        if getattr(self.processor, 'is_3d', False):
+            # 3D图像
+            model_list = ['medsam', 'unet3d', 'deeplabv3', 'myunet3d', '3stage_pelvis']
+        else:
+            # 2D图像
+            model_list = ['medsam', 'xray_unet2d']
+        for model_name in model_list:
+            if model_name in self.available_models:
+                self.model_selector.addItem(model_name)
+        self.model_selector.setCurrentIndex(0)
+        self.model_selector.blockSignals(False)
+        self.on_model_changed(0)
 
 
 class Embedded3DViewer(QWidget):
